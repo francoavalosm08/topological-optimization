@@ -21,9 +21,12 @@ class Problem:
     nely: int
     F: np.ndarray
     fixed_dofs: np.ndarray
+    nelz: int = 0
 
     @property
     def ndof(self) -> int:
+        if self.nelz > 0:
+            return 3 * (self.nelx + 1) * (self.nely + 1) * (self.nelz + 1)
         return 2 * (self.nelx + 1) * (self.nely + 1)
 
     @property
@@ -69,3 +72,23 @@ def cantilever_2d(nelx: int = 60, nely: int = 30) -> Problem:
     left_nodes = np.arange(nely + 1)
     fixed_dofs = np.unique(np.concatenate([2 * left_nodes, 2 * left_nodes + 1]))
     return Problem(name="cantilever2d", nelx=nelx, nely=nely, F=F, fixed_dofs=fixed_dofs)
+
+
+def cantilever_3d(nelx: int = 60, nely: int = 20, nelz: int = 4) -> Problem:
+    """3D cantilever: left face fully clamped, mid-right tip vertical load."""
+    ndof = 3 * (nelx + 1) * (nely + 1) * (nelz + 1)
+    F = np.zeros(ndof, dtype=np.float64)
+    
+    def get_node(x, y, z):
+        return z * (nelx + 1) * (nely + 1) + x * (nely + 1) + y
+        
+    # Mid-right tip load (downward in y)
+    mid_node = get_node(nelx, nely // 2, nelz // 2)
+    F[3 * mid_node + 1] = -1.0
+    
+    # Clamp left face (x = 0)
+    y_idx, z_idx = np.meshgrid(np.arange(nely + 1), np.arange(nelz + 1), indexing="ij")
+    left_nodes = get_node(0, y_idx.ravel(), z_idx.ravel())
+    fixed_dofs = np.unique(np.concatenate([3 * left_nodes, 3 * left_nodes + 1, 3 * left_nodes + 2]))
+    
+    return Problem(name="cantilever3d", nelx=nelx, nely=nely, nelz=nelz, F=F, fixed_dofs=fixed_dofs)

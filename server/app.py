@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.problem import mbb_beam, cantilever_2d
+from core.problem import mbb_beam, cantilever_2d, cantilever_3d
 from core.optimizer import OptParams, run_topopt
 
 app = FastAPI()
@@ -28,6 +28,7 @@ class RunRequest(BaseModel):
     problem: str = "mbb"
     nelx: int = 60
     nely: int = 20
+    nelz: int = 0
     method: str = "oc"
     volfrac: float = 0.5
     max_iter: int = 200
@@ -42,6 +43,8 @@ async def start_run(req: RunRequest):
 
     if req.problem == "mbb":
         prob = mbb_beam(req.nelx, req.nely)
+    elif req.problem == "cantilever3d":
+        prob = cantilever_3d(req.nelx, req.nely, req.nelz)
     else:
         prob = cantilever_2d(req.nelx, req.nely)
 
@@ -53,11 +56,14 @@ async def start_run(req: RunRequest):
 
     def on_iter(it, x, c, change):
         global latest_frame
-        # x is 1D column-major, shape (nelx * nely,)
-        # Reshape to (nelx, nely) for easy drawing on client
-        x_2d = x.reshape(prob.nelx, prob.nely)
+        # x is 1D column-major, shape (nelx * nely * max(1, nelz),)
+        if prob.nelz > 0:
+            x_reshaped = x.reshape(prob.nelx, prob.nely, prob.nelz)
+        else:
+            x_reshaped = x.reshape(prob.nelx, prob.nely)
+        
         # Convert to float32 to save bytes, then base64 encode
-        b64 = base64.b64encode(x_2d.astype(np.float32).tobytes()).decode('utf-8')
+        b64 = base64.b64encode(x_reshaped.astype(np.float32).tobytes()).decode('utf-8')
         
         latest_frame = {
             "iter": it,
@@ -65,6 +71,7 @@ async def start_run(req: RunRequest):
             "change": change,
             "nelx": prob.nelx,
             "nely": prob.nely,
+            "nelz": prob.nelz,
             "density_b64": b64
         }
         # In a real app we might await an async broadcast here, 
@@ -93,6 +100,10 @@ async def websocket_endpoint(websocket: WebSocket):
         print("Client disconnected")
 
 app.mount("/static", StaticFiles(directory=str(Path(__file__).resolve().parent.parent / "web")), name="static")
+
+runs_dir = Path(__file__).resolve().parent.parent / "runs"
+runs_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/runs", StaticFiles(directory=str(runs_dir)), name="runs")
 
 @app.get("/")
 def read_root():

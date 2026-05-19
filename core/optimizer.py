@@ -141,13 +141,21 @@ def run_topopt(
     Returns the final flat density `x` (length nelx*nely, column-major) and history.
     """
     p = params or OptParams()
-    nelx, nely = problem.nelx, problem.nely
-    N = nelx * nely
+    nelx, nely, nelz = problem.nelx, problem.nely, problem.nelz
+    is_3d = nelz > 0
+    N = nelx * nely * nelz if is_3d else nelx * nely
 
-    KE = element_stiffness(E=1.0, nu=p.nu)        # element stiffness at E=1
-    edofMat = build_edof(nelx, nely)
+    if is_3d:
+        from .fea import element_stiffness_3d, build_edof_3d
+        KE = element_stiffness_3d(E=1.0, nu=p.nu)
+        edofMat = build_edof_3d(nelx, nely, nelz)
+        H, Hs = build_filter(nelx, nely, nelz, p.rmin)
+    else:
+        KE = element_stiffness(E=1.0, nu=p.nu)
+        edofMat = build_edof(nelx, nely)
+        H, Hs = build_filter(nelx, nely, 0, p.rmin)
+
     iK, jK = build_assembly_indices(edofMat)
-    H, Hs = build_filter(nelx, nely, p.rmin)
 
     x_init = p.volfrac if p.x_init is None else p.x_init
     x = np.full(N, x_init, dtype=np.float64)
@@ -192,5 +200,12 @@ def run_topopt(
 
         if change < p.tol:
             break
+
+    if is_3d:
+        try:
+            from .postprocess import export_density_to_mesh
+            export_density_to_mesh(x.reshape((nelx, nely, nelz)), "runs", "opt_final")
+        except Exception as e:
+            print(f"Error during mesh export: {e}")
 
     return x, hist

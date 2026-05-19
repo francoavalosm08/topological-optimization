@@ -54,8 +54,9 @@
     <div class="controls">
         <label>Problem: 
             <select id="prob">
-                <option value="mbb">MBB Beam</option>
-                <option value="cantilever2d">Cantilever</option>
+                <option value="mbb">MBB Beam (2D)</option>
+                <option value="cantilever2d">Cantilever (2D)</option>
+                <option value="cantilever3d">Cantilever (3D)</option>
             </select>
         </label>
         <label>Method:
@@ -65,29 +66,162 @@
             </select>
         </label>
         <button onclick="startOptimization()">Start Optimization</button>
+        <button onclick="loadGLB()">Load Final GLB</button>
     </div>
 
     <div id="viewer-container">
-        <!-- Canvas size will be set dynamically, we use CSS transforms or scaling later if needed -->
-        <canvas id="canvas" width="600" height="200"></canvas>
+        <!-- 2D Canvas -->
+        <canvas id="canvas2d" width="600" height="200"></canvas>
+        <!-- 3D Container -->
+        <div id="canvas3d" style="display: none; width: 600px; height: 400px; margin: 0 auto; background: #222;"></div>
+        
         <div class="stats" id="stats">Iter: 0 | Compliance: 0.00 | Change: 0.000</div>
     </div>
 
-    <script>
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        const statsEl = document.getElementById('stats');
+    <!-- Three.js for 3D viewer -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 
+    <script>
+        const canvas2d = document.getElementById('canvas2d');
+        const ctx = canvas2d.getContext('2d');
+        const canvas3d = document.getElementById('canvas3d');
+        const statsEl = document.getElementById('stats');
+        
+        // Three.js setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x222222);
+        const camera = new THREE.PerspectiveCamera(45, 600 / 400, 0.1, 1000);
+        camera.position.set(20, 20, 50);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(600, 400);
+        canvas3d.appendChild(renderer.domElement);
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        
+        // Lights
+        const light = new THREE.DirectionalLight(0xffffff, 1.0);
+        light.position.set(50, 50, 50);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0x404040, 1.5));
+        
+        let instancedMesh = null;
+        
+        function update3D(data, densities) {
+            const { nelx, nely, nelz } = data;
+            
+            // Re-create instanced mesh if dimensions changed or first time
+            if (!instancedMesh || instancedMesh.count !== nelx * nely * nelz) {
+                if (instancedMesh) scene.remove(instancedMesh);
+                if (glbMesh) scene.remove(glbMesh);
+                
+                const geometry = new THREE.BoxGeometry(1, 1, 1);
+                const material = new THREE.MeshPhongMaterial({ color: 0x007acc });
+                instancedMesh = new THREE.InstancedMesh(geometry, material, nelx * nely * nelz);
+                
+                // Center the object
+                const offsetX = -nelx / 2;
+                const offsetY = -nely / 2;
+                const offsetZ = -nelz / 2;
+                
+                const dummy = new THREE.Object3D();
+                let idx = 0;
+                for (let x = 0; x < nelx; x++) {
+                    for (let y = 0; y < nely; y++) {
+                        for (let z = 0; z < nelz; z++) {
+                            dummy.position.set(x + offsetX, -y - offsetY, z + offsetZ); // -y because SVG/2D canvas is y-down
+                            dummy.updateMatrix();
+                            instancedMesh.setMatrixAt(idx++, dummy.matrix);
+                        }
+                    }
+                }
+                scene.add(instancedMesh);
+                camera.position.set(0, 0, Math.max(nelx, nely) * 1.5);
+                controls.target.set(0, 0, 0);
+            }
+            
+            // Update scales (densities)
+            const dummy = new THREE.Object3D();
+            const color = new THREE.Color();
+            
+            let idx = 0;
+            const threshold = 0.3; // Minimum density to render a voxel
+            
+            for (let x = 0; x < nelx; x++) {
+                for (let y = 0; y < nely; y++) {
+                    for (let z = 0; z < nelz; z++) {
+                        const val = densities[idx];
+                        if (val > threshold) {
+                            // Scale voxel by its density (or just keep 1 for full solids)
+                            const s = Math.pow(val, 0.5); 
+                            dummy.scale.set(s, s, s);
+                        } else {
+                            dummy.scale.set(0, 0, 0);
+                        }
+                        dummy.updateMatrix();
+                        
+                        // we need to set the scale via matrix
+                        // instancedMesh doesn't support changing scale directly per instance easily without resetting matrix,
+                        // so we reset matrix with scale:
+                        const offsetX = -nelx / 2;
+                        const offsetY = -nely / 2;
+                        const offsetZ = -nelz / 2;
+                        dummy.position.set(x + offsetX, -y - offsetY, z + offsetZ);
+                        dummy.updateMatrix();
+                        
+                        instancedMesh.setMatrixAt(idx, dummy.matrix);
+                        idx++;
+                    }
+                }
+            }
+            instancedMesh.instanceMatrix.needsUpdate = true;
+        }
+        
+        function animate3D() {
+            requestAnimationFrame(animate3D);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate3D();
+
+
+        let glbMesh = null;
+        
+        function loadGLB() {
+            const loader = new THREE.GLTFLoader();
+            loader.load('/runs/opt_final.glb', function (gltf) {
+                if (instancedMesh) scene.remove(instancedMesh);
+                if (glbMesh) scene.remove(glbMesh);
+                
+                glbMesh = gltf.scene;
+                
+                // the marching cubes creates mesh in index coordinates
+                // center it
+                const box = new THREE.Box3().setFromObject(glbMesh);
+                const center = box.getCenter(new THREE.Vector3());
+                glbMesh.position.x += (glbMesh.position.x - center.x);
+                glbMesh.position.y += (glbMesh.position.y - center.y);
+                glbMesh.position.z += (glbMesh.position.z - center.z);
+                
+                scene.add(glbMesh);
+                
+                canvas2d.style.display = 'none';
+                canvas3d.style.display = 'block';
+                statsEl.innerText = "Loaded GLB model!";
+            }, undefined, function (error) {
+                console.error(error);
+                statsEl.innerText = "Error loading GLB (might not exist yet)";
+            });
+        }
+        
         let ws = new WebSocket("ws://127.0.0.1:8000/ws");
         
         ws.onmessage = async function(event) {
             const data = JSON.parse(event.data);
             
-            // Render canvas
-            canvas.width = data.nelx;
-            canvas.height = data.nely;
+            const { nelx, nely, nelz } = data;
             
-            // density_b64 is float32 array (nelx * nely)
+            // density_b64 is float32 array
             const binaryString = atob(data.density_b64);
             const bytes = new Uint8Array(binaryString.length);
             for (let i = 0; i < binaryString.length; i++) {
@@ -95,29 +229,37 @@
             }
             const densities = new Float32Array(bytes.buffer);
             
-            const imgData = ctx.createImageData(data.nelx, data.nely);
-            
-            // The array in python is x_2d shape (nelx, nely). 
-            // In JS, imageData is row-major (y first, then x), so we must map coordinates carefully.
-            for (let y = 0; y < data.nely; y++) {
-                for (let x = 0; x < data.nelx; x++) {
-                    // python array was x_2d[x, y]
-                    const val = densities[x * data.nely + y]; 
-                    // color 0 = black (solid), 1 = white (void)
-                    const c = Math.max(0, Math.min(255, Math.floor((1 - val) * 255)));
-                    
-                    const idx = (y * data.nelx + x) * 4;
-                    imgData.data[idx] = c;
-                    imgData.data[idx+1] = c;
-                    imgData.data[idx+2] = c;
-                    imgData.data[idx+3] = 255;
+            if (nelz && nelz > 0) {
+                // 3D Mode
+                canvas2d.style.display = 'none';
+                canvas3d.style.display = 'block';
+                update3D(data, densities);
+            } else {
+                // 2D Mode
+                canvas3d.style.display = 'none';
+                canvas2d.style.display = 'inline-block';
+                
+                canvas2d.width = nelx;
+                canvas2d.height = nely;
+                const imgData = ctx.createImageData(nelx, nely);
+                
+                for (let y = 0; y < nely; y++) {
+                    for (let x = 0; x < nelx; x++) {
+                        const val = densities[x * nely + y]; 
+                        const c = Math.max(0, Math.min(255, Math.floor((1 - val) * 255)));
+                        
+                        const idx = (y * nelx + x) * 4;
+                        imgData.data[idx] = c;
+                        imgData.data[idx+1] = c;
+                        imgData.data[idx+2] = c;
+                        imgData.data[idx+3] = 255;
+                    }
                 }
+                ctx.putImageData(imgData, 0, 0);
+                
+                canvas2d.style.width = (nelx * 10) + "px";
+                canvas2d.style.height = (nely * 10) + "px";
             }
-            ctx.putImageData(imgData, 0, 0);
-            
-            // To make it visible, we can scale it up with CSS
-            canvas.style.width = (data.nelx * 10) + "px";
-            canvas.style.height = (data.nely * 10) + "px";
 
             // Update stats
             statsEl.innerText = `Iter: ${data.iter} | Compliance: ${data.compliance.toFixed(2)} | Change: ${data.change.toFixed(4)}`;
@@ -133,14 +275,27 @@
             
             statsEl.innerText = "Starting...";
             
+            let nelx = 60, nely = 20, nelz = 0;
+            if (prob === "cantilever3d") {
+                nelx = 60;
+                nely = 20;
+                nelz = 4;
+            } else if (prob === "cantilever2d") {
+                nelx = 60;
+                nely = 30;
+            }
+
             await fetch("http://127.0.0.1:8000/run", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     problem: prob,
                     method: method,
-                    nelx: 60,
-                    nely: 30 // cantilever is 60x30 usually, MBB 60x20, we can just fix it or let server default based on prob
+                    nelx: nelx,
+                    nely: nely,
+                    nelz: nelz,
+                    volfrac: (prob === "cantilever3d" ? 0.3 : 0.5),
+                    max_iter: 20
                 })
             });
         }

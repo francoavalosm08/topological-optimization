@@ -1,9 +1,11 @@
 numpy>=1.26
 scipy>=1.11
 matplotlib>=3.8
-scikit-image>=0.22
-trimesh>=4.0
-meshio>=5.3
+
+# --- Phase 3 & 4 (3D, Geometry, Post-processing) ---
+scikit-image>=0.23.0
+trimesh>=4.4.0
+meshio>=5.3.0
 pillow>=10.0
 
 # Phase 2+
