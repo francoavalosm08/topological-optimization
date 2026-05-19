@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Topology Optimization Viewer</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            text-align: center; 
+            margin-top: 50px; 
+            background: #1e1e1e; 
+            color: #f0f0f0; 
+        }
+        #viewer-container {
+            margin: 20px auto;
+            padding: 20px;
+            background: #2d2d2d;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            display: inline-block;
+        }
+        #frame { 
+            max-width: 100%; 
+            image-rendering: pixelated; /* good for pixel maps */
+        }
+        button { 
+            padding: 10px 24px; 
+            font-size: 16px; 
+            margin-top: 20px; 
+            cursor: pointer; 
+            background: #007acc;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #0098ff;
+        }
+    </style>
+</head>
+<body>
+    <h1>Topology Optimization</h1>
+    <div id="viewer-container">
+        <!-- Assuming images are in a sibling runs/ directory relative to web/ -->
+        <img id="frame" src="../runs/iter_latest.png" alt="Optimization Frame (Run scripts/run_mbb.py first)">
+    </div>
+    <br>
+    <button onclick="reloadFrame()">Refresh Frame</button>
+
+    <script>
+        function reloadFrame() {
+            var frame = document.getElementById('frame');
+            frame.src = "../runs/iter_latest.png?t=" + Date.now();
+        }
+        
+        // Auto-refresh every 1000ms
+        setInterval(reloadFrame, 1000);
+    </script>
+</body>
+</html>

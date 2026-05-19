@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(python -m pip install numpy scipy matplotlib pillow --quiet 2>&1)",
+      "Bash(ls \"C:/Users/Box/.claude/\" 2>&1 | head -30)",
+      "Read(//c/Users/Box/.claude/**)",
+      "PowerShell(python -m pip install numpy scipy matplotlib pillow 2>&1)",
+      "PowerShell(python -c \"import numpy, scipy, matplotlib, PIL; print\\('numpy', numpy.__version__\\); print\\('scipy', scipy.__version__\\); print\\('matplotlib', matplotlib.__version__\\); print\\('PIL', PIL.__version__\\)\")"
+    ]
+  }
+}
