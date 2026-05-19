@@ -19,7 +19,8 @@ from .problem import Problem
 
 
 @dataclass
-class OCParams:
+class OptParams:
+    method: str = "oc"          # "oc" or "mma"
     volfrac: float = 0.5
     penal: float = 3.0
     rmin: float = 1.5
@@ -31,6 +32,9 @@ class OCParams:
     E0: float = 1.0
     Emin: float = 1e-9
     nu: float = 0.3
+
+# Alias for backwards compatibility with Phase 1 scripts
+OCParams = OptParams
 
 
 @dataclass
@@ -81,16 +85,62 @@ def oc_update(
     return xnew
 
 
+def mma_update(
+    x: np.ndarray,
+    c: float,
+    dc: np.ndarray,
+    dv: np.ndarray,
+    volfrac: float,
+    it: int,
+    xold1: np.ndarray,
+    xold2: np.ndarray,
+    low: np.ndarray,
+    upp: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    import mmapy.mma
+    n = x.size
+    m = 1
+    
+    xval = x.reshape(n, 1)
+    xmin = np.zeros((n, 1))
+    xmax = np.ones((n, 1))
+    xold1_col = xold1.reshape(n, 1)
+    xold2_col = xold2.reshape(n, 1)
+    
+    f0val = c
+    df0dx = dc.reshape(n, 1)
+    
+    V_target = volfrac * np.sum(dv)
+    V_current = np.sum(x * dv)
+    fval = np.array([[V_current / V_target - 1.0]])
+    dfdx = (dv / V_target).reshape(1, n)
+    
+    low_col = low.reshape(n, 1)
+    upp_col = upp.reshape(n, 1)
+    
+    a0 = 1.0
+    a = np.zeros((m, 1))
+    c_mma = np.full((m, 1), 1000.0)
+    d_mma = np.zeros((m, 1))
+    
+    res = mmapy.mma.mmasub(
+        m, n, it + 1, xval, xmin, xmax, xold1_col, xold2_col,
+        f0val, df0dx, fval, dfdx, low_col, upp_col, a0, a, c_mma, d_mma
+    )
+    xmma, _, _, _, _, _, _, _, _, low_new, upp_new = res
+    return xmma.flatten(), low_new.flatten(), upp_new.flatten()
+
+
 def run_topopt(
     problem: Problem,
-    params: OCParams | None = None,
+    params: OptParams | None = None,
     on_iter: Callable[[int, np.ndarray, float, float], None] | None = None,
 ) -> tuple[np.ndarray, RunHistory]:
     """Run the Phase 1 SIMP+OC compliance optimizer.
 
     Returns the final flat density `x` (length nelx*nely, column-major) and history.
     """
-    p = params or OCParams()
+    p = params or OptParams()
     nelx, nely = problem.nelx, problem.nely
     N = nelx * nely
 
@@ -107,6 +157,12 @@ def run_topopt(
     ndof = problem.ndof
 
     hist = RunHistory()
+    
+    # MMA state
+    xold1 = x.copy()
+    xold2 = x.copy()
+    low = np.zeros(N)
+    upp = np.ones(N)
 
     for it in range(p.max_iter):
         K = assemble_K(x, KE, iK, jK, ndof, p.penal, p.E0, p.Emin)
@@ -116,8 +172,14 @@ def run_topopt(
 
         dc = apply_sensitivity_filter(dc, x, H, Hs)
 
-        xnew = oc_update(x, dc, dv, p.volfrac, move=p.move, eta=p.eta)
+        if p.method.lower() == "mma":
+            xnew, low, upp = mma_update(x, c, dc, dv, p.volfrac, it, xold1, xold2, low, upp)
+        else:
+            xnew = oc_update(x, dc, dv, p.volfrac, move=p.move, eta=p.eta)
+            
         change = float(np.abs(xnew - x).max())
+        xold2 = xold1.copy()
+        xold1 = x.copy()
         x = xnew
 
         hist.iters.append(it)

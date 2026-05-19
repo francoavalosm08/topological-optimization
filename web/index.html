@@ -19,43 +19,131 @@
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
             display: inline-block;
         }
-        #frame { 
-            max-width: 100%; 
-            image-rendering: pixelated; /* good for pixel maps */
+        canvas {
+            border: 1px solid #555;
+            image-rendering: pixelated;
         }
-        button { 
-            padding: 10px 24px; 
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            align-items: center;
+        }
+        button, select, input { 
+            padding: 10px 15px; 
             font-size: 16px; 
-            margin-top: 20px; 
-            cursor: pointer; 
             background: #007acc;
             color: white;
             border: none;
             border-radius: 4px;
-            transition: background 0.2s;
+            cursor: pointer;
         }
-        button:hover {
-            background: #0098ff;
+        button:hover { background: #0098ff; }
+        select, input { background: #333; color: white; border: 1px solid #555; cursor: auto; }
+        .stats {
+            margin-top: 10px;
+            font-size: 18px;
+            color: #ccc;
         }
     </style>
 </head>
 <body>
-    <h1>Topology Optimization</h1>
-    <div id="viewer-container">
-        <!-- Assuming images are in a sibling runs/ directory relative to web/ -->
-        <img id="frame" src="../runs/iter_latest.png" alt="Optimization Frame (Run scripts/run_mbb.py first)">
+    <h1>Topology Optimization - Live Stream</h1>
+    
+    <div class="controls">
+        <label>Problem: 
+            <select id="prob">
+                <option value="mbb">MBB Beam</option>
+                <option value="cantilever2d">Cantilever</option>
+            </select>
+        </label>
+        <label>Method:
+            <select id="method">
+                <option value="oc">OC</option>
+                <option value="mma">MMA</option>
+            </select>
+        </label>
+        <button onclick="startOptimization()">Start Optimization</button>
     </div>
-    <br>
-    <button onclick="reloadFrame()">Refresh Frame</button>
+
+    <div id="viewer-container">
+        <!-- Canvas size will be set dynamically, we use CSS transforms or scaling later if needed -->
+        <canvas id="canvas" width="600" height="200"></canvas>
+        <div class="stats" id="stats">Iter: 0 | Compliance: 0.00 | Change: 0.000</div>
+    </div>
 
     <script>
-        function reloadFrame() {
-            var frame = document.getElementById('frame');
-            frame.src = "../runs/iter_latest.png?t=" + Date.now();
-        }
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const statsEl = document.getElementById('stats');
+
+        let ws = new WebSocket("ws://127.0.0.1:8000/ws");
         
-        // Auto-refresh every 1000ms
-        setInterval(reloadFrame, 1000);
+        ws.onmessage = async function(event) {
+            const data = JSON.parse(event.data);
+            
+            // Render canvas
+            canvas.width = data.nelx;
+            canvas.height = data.nely;
+            
+            // density_b64 is float32 array (nelx * nely)
+            const binaryString = atob(data.density_b64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            const densities = new Float32Array(bytes.buffer);
+            
+            const imgData = ctx.createImageData(data.nelx, data.nely);
+            
+            // The array in python is x_2d shape (nelx, nely). 
+            // In JS, imageData is row-major (y first, then x), so we must map coordinates carefully.
+            for (let y = 0; y < data.nely; y++) {
+                for (let x = 0; x < data.nelx; x++) {
+                    // python array was x_2d[x, y]
+                    const val = densities[x * data.nely + y]; 
+                    // color 0 = black (solid), 1 = white (void)
+                    const c = Math.max(0, Math.min(255, Math.floor((1 - val) * 255)));
+                    
+                    const idx = (y * data.nelx + x) * 4;
+                    imgData.data[idx] = c;
+                    imgData.data[idx+1] = c;
+                    imgData.data[idx+2] = c;
+                    imgData.data[idx+3] = 255;
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+            
+            // To make it visible, we can scale it up with CSS
+            canvas.style.width = (data.nelx * 10) + "px";
+            canvas.style.height = (data.nely * 10) + "px";
+
+            // Update stats
+            statsEl.innerText = `Iter: ${data.iter} | Compliance: ${data.compliance.toFixed(2)} | Change: ${data.change.toFixed(4)}`;
+        };
+
+        ws.onclose = function() {
+            statsEl.innerText = "WebSocket disconnected. Is server running?";
+        };
+
+        async function startOptimization() {
+            const prob = document.getElementById("prob").value;
+            const method = document.getElementById("method").value;
+            
+            statsEl.innerText = "Starting...";
+            
+            await fetch("http://127.0.0.1:8000/run", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    problem: prob,
+                    method: method,
+                    nelx: 60,
+                    nely: 30 // cantilever is 60x30 usually, MBB 60x20, we can just fix it or let server default based on prob
+                })
+            });
+        }
     </script>
 </body>
 </html>
