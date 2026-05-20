@@ -1,102 +1,93 @@
-# Handoff — Topology Optimization, end of session 2026-05-18
+# Handoff — Next Session
 
-## Where we are
+**Last update:** 2026-05-19 (end of Phase 3 commit `b5abc21`, plus `PLAN.md` and `README.md` housekeeping).
+**Repo:** <https://github.com/francoavalosm08/topological-optimization>
+**Default branch:** `main`.
 
-**Plan file:** `C:\Users\Box\.claude\plans\hashed-swinging-walrus.md`
-**Plan summary:** `C:\Users\Box\.claude\plan-summaries\2026-05-18_topopt_phase1.md`
+If you are a new LLM or a new dev picking this up, read these in order before touching anything:
 
-**Phase 0 (project setup) — DONE**
-- Directory tree created: `core/`, `geometry/`, `server/`, `web/`, `tests/`, `runs/`.
-- `requirements.txt` written (Phase-1 deps listed first, Phase-2+ commented in).
-- Python 3.13.13 + numpy 2.4.6, scipy 1.17.1, matplotlib 3.10.9, pillow 12.2.0 confirmed importable.
+1. [`README.md`](README.md) — the entry point, repo layout, quickstart.
+2. [`PLAN.md`](PLAN.md) — original Phase 1 plan + Current Progress section.
+3. [`topopt_build_plan.md`](topopt_build_plan.md) — the staged build plan, source of truth.
+4. [`compass_artifact_wf-b9b66ca3-c38f-4030-a795-a395a0d7fdc3_text_markdown.md`](compass_artifact_wf-b9b66ca3-c38f-4030-a795-a395a0d7fdc3_text_markdown.md) — the math, the references, the open-source-stack inventory, the honest STEP-export caveats.
 
-**Phase 1 (2D SIMP solver) — CODE COMPLETE, NOT YET VALIDATED**
-- `core/fea.py` — element stiffness, edofMat, sparse assembly, KU=F solve, compliance + analytic sensitivity.
-- `core/filters.py` — Sigmund sensitivity filter (H matrix + Hs).
-- `core/problem.py` — `mbb_beam()` (Phase 1 gate), `cantilever_2d()` (Phase 2 ready).
-- `core/optimizer.py` — `oc_update()` with bisection on λ, main `run_topopt()` loop with `on_iter` callback hook (used by Phase 2's WebSocket).
-- `tests/test_gradient.py` — finite-difference check on dc/dx (build-plan-mandated, sign + 4-sig-fig agreement on 10 random elements; also asserts dc ≤ 0).
-- `tests/test_mbb.py` — Phase 1 validation gate (asserts final compliance within 1% of 205).
+---
 
-## What to do next — exact steps
+## What's done
 
-### Step 1: Install pytest, run the gradient check FIRST
+- **Phase 0** — directory tree, `requirements.txt`, deps installed.
+- **Phase 1** (`cc415c8`) — 2D Q4 SIMP solver, OC update with λ-bisection, Sigmund sensitivity filter, MBB beam validation gate. FD gradient check landed.
+- **Phase 2** (`7687d8e`) — `mmapy`-based MMA optimizer alongside OC (`OptParams.method = "oc" | "mma"`); FastAPI server with `POST /run` and WebSocket `/ws` streaming `{iter, compliance, change, density_b64}` per iteration; viewer wired to live updates.
+- **Phase 3** (`b5abc21`) — H8 3D solver (`core/fea.py:element_stiffness_3d`, `build_edof_3d`), 3D cantilever problem, marching-cubes + Taubin smoothing → STL/GLB export in `core/postprocess.py`, Three.js viewer with `GLTFLoader` + `OrbitControls` and an iso-threshold slider.
+
+## What's next — Phase 4: geometry import
+
+**Phase 4 gate (from `topopt_build_plan.md`):** *"Import a real bracket STL, define BCs in the viewer, run, get a sensible optimized topology that keeps passive regions solid."*
+
+### Files to create
+
+```text
+geometry/__init__.py
+geometry/voxelize.py     — STL via trimesh.voxelized; STEP via pythonocc-core → mesh → voxelize. Output: occupancy grid bounding the part.
+geometry/primitives.py   — programmatic box/cylinder + boolean-subtracted holes for quick design domains.
+```
+
+### Files to modify
+
+- **`core/problem.py`** — extend `Problem` to carry three voxel masks: `design`, `passive_solid`, `void`. Each iteration of the optimizer loop must:
+  - force `x[passive_solid] = 1.0`
+  - force `x[void] = Emin`  (or simply `x_min` per the build plan)
+  - exclude both from volume accounting (target is `volfrac * design.sum()`, and the OC bisection should only redistribute over `design` voxels).
+  - support marking fixed DOFs and load DOFs by selecting node regions (helper functions on `Problem` like `fix_nodes_in_box(...)`, `apply_load_at_nodes(...)`).
+- **`core/optimizer.py:oc_update` (and `mma_update`)** — accept a `design_mask` so the bisection target divides by `design_mask.sum()`, not `x.size`; only update `x` where `design_mask` is true.
+- **`server/app.py`** — add `POST /upload_stl` (multipart) that voxelizes the STL and returns the resulting occupancy grid + a GLB preview; `RunRequest` grows fields for `design_mask`, `passive_solid`, `void`, `fixed_dofs`, `load_dofs` (or — easier — accept higher-level region descriptions and resolve to DOFs server-side).
+- **`web/index.html`** + new `web/controls.js` — upload control that POSTs the STL, then GLB preview before optimizing; click-to-tag or region-box UI to mark passive regions, supports, and load points directly on the model.
+
+### Dependencies to add
+
+Uncomment / add in `requirements.txt`:
+
+- `trimesh>=4.0` (already listed)
+- `pygmsh` and `gmsh` (already commented in `requirements.txt`)
+- `pythonocc-core` is **conda-only**; the build plan explicitly says to use it for STEP if needed. For Phase 4 it's fine to support **STL only** and defer STEP — flag STEP as a Phase 4.5 stretch goal.
+
+### Validation gate
+
+1. Pick a real-world bracket STL (a simple L-bracket or motor mount works).
+2. Upload via the viewer, click-tag a couple of passive-solid bolt-boss regions and a fixed-support region, set a load point.
+3. Run with `volfrac=0.4`, `penal=3`, `rmin=2`.
+4. Confirm visually: optimizer keeps the passive regions solid, removes material from the design region, produces a connected load path from loads to supports.
+5. Re-run with the same setup but a different `volfrac` (0.3 and 0.5). Topology should change consistently — fewer/more members — with passive regions still solid.
+
+### Known gotchas (Phase 4)
+
+- **STL is a surface, not a solid.** `trimesh.voxelized(pitch)` rasterizes the surface; you need `.fill()` to get a solid occupancy grid. Watertightness check (`trimesh.Trimesh.is_watertight`) before voxelizing — non-watertight inputs make `.fill()` unreliable.
+- **Voxel resolution dictates feature fidelity.** Pick `pitch` so the smallest feature you care about is ≥3 voxels wide. Above ~100×100×100 grid (10⁶ elements), `scipy.sparse.linalg.spsolve` runs out of memory — install `pypardiso` and switch the solver (compass notes: 5–10× speedup typical).
+- **Density-flat ordering must stay column-major** — when the voxelizer produces a `(nx, ny, nz)` boolean array, flatten as `.ravel(order='F')` (or whatever matches `build_edof_3d`'s element ordering) before handing it to the optimizer. Mismatched flattening will look like a working optimizer that produces garbage topology.
+- **Volume fraction with passive elements** — `volfrac` is the fraction of the **design region**, not the bounding box. If the user expects "30% of the bracket bounding box" the UI math must match.
+- **DOF selection by node region** — be careful with the column-major node ordering convention in `core/fea.py`: `node(elx, ely, elz) = elz * (nelx+1) * (nely+1) + elx * (nely+1) + ely`. Off-by-one mistakes in node selection will look like missing supports = singular K = NaNs.
+
+### Validation hygiene (carries forward from earlier phases)
+
+- Re-run `python -m pytest tests/test_gradient.py tests/test_gradient_3d.py tests/test_mbb.py -v` whenever you touch `core/fea.py` or `core/optimizer.py`. These are the safety net for sensitivity-sign and assembly bugs.
+- After Phase 4 lands, add a `tests/test_passive_mask.py`: tiny problem with one passive-solid voxel and one void voxel, run a few iterations, assert those voxels' densities are pinned at 1 and `Emin` respectively.
+
+---
+
+## Things this handoff deliberately does NOT pre-decide
+
+- **Which click-to-tag UI library** (raycasting on a GLB in Three.js is enough — no need for a heavyweight 3D-CAD editor in-browser).
+- **STEP import** — defer unless a downstream consumer demands it. The compass markdown is explicit that organic-TO → STEP is unsolved in OSS.
+- **mmapy with passive regions** — MMA needs the gradient with respect to design variables only; how passive masking interacts with MMA's history vectors (`xold1`, `xold2`, `low`, `upp`) needs design. Suggest: keep `x` full-length but freeze passive entries' design variables (don't update); or restrict the design vector to design voxels only and reconstruct full `x` for the FE step. The second is cleaner.
+
+## Quick "is the repo healthy?" smoke test
 
 ```powershell
-python -m pip install pytest
-python -m pytest tests/test_gradient.py -v
+python -m pip install -r requirements.txt
+python -m pytest tests/ -v          # all gates should pass
+python scripts/run_mbb.py           # MBB final compliance prints ~205
+python -m uvicorn server.app:app --reload --port 8000
+# → http://localhost:8000  shows the viewer; trigger a run and watch live updates
 ```
 
-**Expected:** 4 tests pass (3 seeds + sign-check). If the FD test fails:
-- Check sign of `dc` in `core/fea.py:compliance_and_sensitivity` (negative is correct).
-- Check `edofMat` orientation in `core/fea.py:build_edof` — node ordering must be counter-clockwise from top-left.
-- Check `iK`/`jK` row/col semantics in `core/fea.py:build_assembly_indices` (iK = repeat, jK = tile).
-
-**Do not run the MBB gate until the FD test passes.** This is the build plan's standing rule and there's no point burning a full optimization run on a broken gradient.
-
-### Step 2: Run the MBB validation gate
-
-```powershell
-python -m pytest tests/test_mbb.py -v -s
-```
-
-**Expected:** converges in ~60–100 iterations to compliance ≈ 205 (within 1%).
-Run takes ~10–30 seconds on a modest CPU.
-
-**If it fails:**
-- Compliance way off (>20% high): filter probably broken — check `apply_sensitivity_filter` in `core/filters.py`.
-- Compliance slightly off (1–5%): probably acceptable but tighten `OCParams.tol` from 0.01 → 0.005 or raise `max_iter`.
-- Diverges or NaN: check `Emin = 1e-9` is actually applied in `assemble_K`.
-- Checkerboarding (visual): filter is being skipped — verify `apply_sensitivity_filter` is called inside `run_topopt`'s loop.
-
-### Step 3: Build the dumb PNG viewer (still in Phase 1)
-
-Add an `on_iter` callback that saves `runs/iter_XXXX.png` (and copies it to `runs/iter_latest.png`) via matplotlib:
-
-```python
-# scripts/run_mbb.py  (new file)
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import shutil
-from pathlib import Path
-from core.optimizer import OCParams, run_topopt
-from core.problem import mbb_beam
-
-OUT = Path("runs"); OUT.mkdir(exist_ok=True)
-
-def save_frame(it, x_flat, c, change):
-    img = x_flat.reshape(60, 20).T  # (nely, nelx), since flat is column-major
-    fig, ax = plt.subplots(figsize=(6, 2.2))
-    ax.imshow(1 - img, cmap="gray", vmin=0, vmax=1, interpolation="nearest")
-    ax.set_title(f"iter {it}  c={c:.2f}  change={change:.3f}")
-    ax.axis("off")
-    p = OUT / f"iter_{it:04d}.png"
-    fig.savefig(p, dpi=90, bbox_inches="tight")
-    plt.close(fig)
-    shutil.copyfile(p, OUT / "iter_latest.png")
-
-x, hist = run_topopt(mbb_beam(60, 20), OCParams(), on_iter=save_frame)
-print("final compliance:", hist.compliance[-1])
-```
-
-Then write `web/index.html` as a single page with an `<img id="frame" src="../runs/iter_latest.png">` and a button that triggers `frame.src = "../runs/iter_latest.png?t=" + Date.now()` (cache-busts so reloads see new frames). Open it with `file://` — no server needed in Phase 1.
-
-### Step 4 (after Phase 1 fully passes): commit/snapshot and start Phase 2
-
-Build-plan rule: *"Each phase ends with a committed, validated, runnable state."*
-The working dir isn't a git repo yet — initialize and commit before Phase 2 to lock the baseline:
-
-```powershell
-git init
-git add .
-git commit -m "Phase 1: 2D SIMP + OC solver, MBB beam gate passing"
-```
-
-Phase 2 scope (next session): add `mmapy` MMA optimizer alongside OC, build `server/app.py` (FastAPI `POST /run` + WebSocket `/ws`), wire the viewer to live-update each iteration via WebSocket instead of PNG reload. Gate = cantilever converges, MMA ≥ OC quality, live stream is smooth.
-
-## Open issues / gotchas to remember
-
-- **mmapy on Python 3.13** — unverified. May need 3.11/3.12 fallback or build from source. Check `pip install mmapy` early in Phase 2; if it fails, the MMA-on-Python-3.13 question becomes the first thing to solve.
-- **PNG-per-iteration writes** are fine at 60×20 but will be a bottleneck at 3D Phase 3 scale (~1 MB × hundreds of iters). Replaced by WebSocket in Phase 2 anyway.
-- **Density-flat ordering is column-major** (`x[elx*nely + ely]`). Anywhere we reshape to a 2D array for visualization or filter math, the shape must be `(nelx, nely)` and we display its transpose so x = horizontal in the rendered image.
+If any of those fail, **fix that before starting Phase 4** — same rule as every other phase.
