@@ -1,0 +1,8 @@
+{
+  "name": "Al 6061-T6",
+  "young_modulus": 68900000000.0,
+  "poisson_ratio": 0.33,
+  "density": 2700.0,
+  "stress_limit": 276000000.0,
+  "source_note": "Common engineering handbook nominal values; SI units."
+}

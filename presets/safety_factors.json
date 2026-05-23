@@ -1,0 +1,14 @@
+{
+  "aerospace": {
+    "factor": 2.0,
+    "note": "Conservative initial preset; does not replace standards-based certification."
+  },
+  "consumer_drone": {
+    "factor": 1.5,
+    "note": "Initial lightweight UAV preset for non-certified prototypes."
+  },
+  "ground_vehicle": {
+    "factor": 3.0,
+    "note": "Higher preset for impact/vibration-prone ground vehicle parts."
+  }
+}

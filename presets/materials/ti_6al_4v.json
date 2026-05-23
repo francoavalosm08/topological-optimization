@@ -1,0 +1,8 @@
+{
+  "name": "Ti 6Al-4V",
+  "young_modulus": 113800000000.0,
+  "poisson_ratio": 0.342,
+  "density": 4430.0,
+  "stress_limit": 880000000.0,
+  "source_note": "Common engineering handbook nominal values; SI units."
+}

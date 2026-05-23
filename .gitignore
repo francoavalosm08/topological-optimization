@@ -1,4 +1,11 @@
 runs/
+z88_assets/
+crash_reports/
+build/
+dist/
+samples/
+Z88*.log
+z88*.log
 __pycache__/
 *.pyc
 .pytest_cache/

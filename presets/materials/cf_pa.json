@@ -1,0 +1,8 @@
+{
+  "name": "CF-PA",
+  "young_modulus": 6500000000.0,
+  "poisson_ratio": 0.34,
+  "density": 1180.0,
+  "stress_limit": 95000000.0,
+  "source_note": "Representative chopped-carbon-fiber nylon values; validate against supplier and print orientation data."
+}

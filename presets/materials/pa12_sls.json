@@ -1,0 +1,8 @@
+{
+  "name": "PA12 SLS",
+  "young_modulus": 1700000000.0,
+  "poisson_ratio": 0.39,
+  "density": 1010.0,
+  "stress_limit": 48000000.0,
+  "source_note": "Representative additive-manufacturing material values; validate against supplier datasheet before engineering use."
+}

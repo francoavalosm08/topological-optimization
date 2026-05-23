@@ -34,6 +34,11 @@ def export_density_to_mesh(density_3d: np.ndarray, run_dir: str | Path, prefix: 
     # Ensure watertight if possible (optional step)
     if not mesh.is_watertight:
         mesh.fill_holes()
+
+    # Drop floating fragments from marching cubes before production export.
+    components = mesh.split(only_watertight=False)
+    if len(components) > 1:
+        mesh = max(components, key=lambda part: part.area)
         
     # Export
     stl_path = run_dir / f"{prefix}.stl"

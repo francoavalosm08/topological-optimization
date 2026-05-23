@@ -1,0 +1,8 @@
+{
+  "name": "PETG",
+  "young_modulus": 2100000000.0,
+  "poisson_ratio": 0.38,
+  "density": 1270.0,
+  "stress_limit": 50000000.0,
+  "source_note": "Representative FDM material values; validate against filament and print-process data."
+}

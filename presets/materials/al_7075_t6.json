@@ -1,0 +1,8 @@
+{
+  "name": "Al 7075-T6",
+  "young_modulus": 71700000000.0,
+  "poisson_ratio": 0.33,
+  "density": 2810.0,
+  "stress_limit": 503000000.0,
+  "source_note": "Common engineering handbook nominal values; SI units."
+}

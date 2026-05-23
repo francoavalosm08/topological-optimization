@@ -10,6 +10,7 @@ pillow>=10.0
 
 # Phase 2+
 fastapi>=0.110
+python-multipart>=0.0.9
 uvicorn[standard]>=0.27
 websockets>=12.0
 
@@ -19,3 +20,6 @@ mmapy>=0.2
 # Optional but recommended
 # pypardiso  # MKL Pardiso, big speedup for 3D
 # pygmsh; gmsh  # unstructured meshes (Phase 4)
+
+# Packaging / local distributable builds
+pyinstaller>=6.20

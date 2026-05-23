@@ -46,6 +46,62 @@
             font-size: 18px;
             color: #ccc;
         }
+        #z88-panel {
+            width: min(980px, calc(100vw - 48px));
+            margin: 24px auto;
+            padding: 18px;
+            text-align: left;
+            background: #252525;
+            border: 1px solid #3f3f3f;
+            border-radius: 10px;
+        }
+        #z88-panel h2 { margin-top: 0; }
+        #z88-panel .z88-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+            align-items: end;
+        }
+        #z88-panel label {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            color: #ddd;
+        }
+        #z88-panel input, #z88-panel select, #z88-panel textarea {
+            box-sizing: border-box;
+            width: 100%;
+        }
+        #z88-panel textarea {
+            min-height: 170px;
+            font-family: Consolas, 'Courier New', monospace;
+            font-size: 13px;
+        }
+        #z88-panel .z88-options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+            margin-top: 12px;
+        }
+        #z88-panel .z88-options label {
+            align-items: center;
+            display: flex;
+            flex-direction: row;
+            font-weight: 600;
+            gap: 6px;
+        }
+        #z88-panel .z88-options input {
+            width: auto;
+        }
+        #z88-output {
+            max-height: 240px;
+            overflow: auto;
+            padding: 12px;
+            background: #141414;
+            border: 1px solid #444;
+            border-radius: 6px;
+            white-space: pre-wrap;
+        }
     </style>
 </head>
 <body>
@@ -53,16 +109,25 @@
     
     <div class="controls">
         <label>Problem: 
-            <select id="prob">
+            <select id="prob" onchange="onProblemChange()">
                 <option value="mbb">MBB Beam (2D)</option>
                 <option value="cantilever2d">Cantilever (2D)</option>
                 <option value="cantilever3d">Cantilever (3D)</option>
+                <option value="bracket" selected>L-Bracket (3D, built-in)</option>
+                <option value="custom">Custom + optional STL</option>
             </select>
         </label>
+        <label id="stl-upload-label" style="display:none;">
+            STL <input type="file" id="stlFile" accept=".stl,.obj,.ply" />
+            pitch <input type="number" id="pitch" value="1" min="0.1" step="0.1" style="width:70px;" />
+            <button type="button" onclick="uploadStl()">Upload</button>
+        </label>
+        <button type="button" id="preview-bracket-btn" onclick="previewBracket()">Preview Bracket</button>
         <label>Method:
             <select id="method">
                 <option value="oc">OC</option>
                 <option value="mma">MMA</option>
+                <option value="stress">Stress-aware</option>
             </select>
         </label>
         <button onclick="startOptimization()">Start Optimization</button>
@@ -77,6 +142,54 @@
         
         <div class="stats" id="stats">Iter: 0 | Compliance: 0.00 | Change: 0.000</div>
     </div>
+
+    <section id="z88-panel">
+        <h2>Z88Arion Workflow</h2>
+        <p>Use this for Z88-backed recipe setup and backend/guided handoff. STL paths must be local paths visible to this machine.</p>
+        <div class="z88-grid">
+            <label>Recipe
+                <select id="z88Recipe" onchange="loadZ88Template()">
+                    <option value="generic_bracket">generic_bracket</option>
+                    <option value="drone_motor_mount">drone_motor_mount</option>
+                    <option value="drone_landing_gear">drone_landing_gear</option>
+                    <option value="drone_gimbal_mount">drone_gimbal_mount</option>
+                    <option value="ring_wing_strut">ring_wing_strut</option>
+                </select>
+            </label>
+            <label>STL path
+                <input id="z88StlPath" placeholder="C:/path/to/part.stl" />
+            </label>
+            <label>Run / project folder
+                <input id="z88RunDir" placeholder="runs/z88/..." />
+            </label>
+            <label>Z88 install root
+                <input id="z88InstallRoot" placeholder="C:/Z88ArionV3" />
+            </label>
+        </div>
+        <label style="margin-top:12px;">Recipe payload
+            <textarea id="z88Payload"></textarea>
+        </label>
+        <div class="z88-options">
+            <label>
+                <input id="z88RunWorkflow" type="checkbox" checked />
+                Run after native generation
+            </label>
+            <label>
+                <input id="z88GenerateStress" type="checkbox" />
+                Generate stress output
+            </label>
+        </div>
+        <div class="controls">
+            <button type="button" onclick="loadZ88Catalog()">Load Z88 Presets</button>
+            <button type="button" onclick="checkZ88Install()">Check Z88 Install</button>
+            <button type="button" onclick="generateZ88Samples()">Generate Samples</button>
+            <button type="button" onclick="configureZ88Recipe(false)">Configure Only</button>
+            <button type="button" onclick="configureZ88Recipe(true)">Prepare Run Folder</button>
+            <button type="button" onclick="generateZ88NativeProject()">Generate Native OC Project</button>
+            <button type="button" onclick="runZ88Backend()">Run / Guide Backend</button>
+        </div>
+        <pre id="z88-output">Z88 output will appear here.</pre>
+    </section>
 
     <!-- Three.js for 3D viewer -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -107,7 +220,7 @@
         
         let instancedMesh = null;
         
-        function update3D(data, densities) {
+        function update3D(data, densities, stresses = null) {
             const { nelx, nely, nelz } = data;
             
             // Re-create instanced mesh if dimensions changed or first time
@@ -116,7 +229,7 @@
                 if (glbMesh) scene.remove(glbMesh);
                 
                 const geometry = new THREE.BoxGeometry(1, 1, 1);
-                const material = new THREE.MeshPhongMaterial({ color: 0x007acc });
+                const material = new THREE.MeshPhongMaterial({ color: 0xffffff });
                 instancedMesh = new THREE.InstancedMesh(geometry, material, nelx * nely * nelz);
                 
                 // Center the object
@@ -155,8 +268,15 @@
                             // Scale voxel by its density (or just keep 1 for full solids)
                             const s = Math.pow(val, 0.5); 
                             dummy.scale.set(s, s, s);
+                            if (stresses) {
+                                const ratio = Math.min(1, Math.max(0, stresses[idx] / (data.stress_limit || 1)));
+                                color.setHSL(0.62 * (1 - ratio), 0.9, 0.52);
+                            } else {
+                                color.setRGB(0.08, 0.42 + 0.35 * val, 0.78);
+                            }
                         } else {
                             dummy.scale.set(0, 0, 0);
+                            color.setRGB(0, 0, 0);
                         }
                         dummy.updateMatrix();
                         
@@ -170,11 +290,13 @@
                         dummy.updateMatrix();
                         
                         instancedMesh.setMatrixAt(idx, dummy.matrix);
+                        instancedMesh.setColorAt(idx, color);
                         idx++;
                     }
                 }
             }
             instancedMesh.instanceMatrix.needsUpdate = true;
+            if (instancedMesh.instanceColor) instancedMesh.instanceColor.needsUpdate = true;
         }
         
         function animate3D() {
@@ -228,12 +350,21 @@
                 bytes[i] = binaryString.charCodeAt(i);
             }
             const densities = new Float32Array(bytes.buffer);
+            let stresses = null;
+            if (data.stress_b64) {
+                const stressBinary = atob(data.stress_b64);
+                const stressBytes = new Uint8Array(stressBinary.length);
+                for (let i = 0; i < stressBinary.length; i++) {
+                    stressBytes[i] = stressBinary.charCodeAt(i);
+                }
+                stresses = new Float32Array(stressBytes.buffer);
+            }
             
             if (nelz && nelz > 0) {
                 // 3D Mode
                 canvas2d.style.display = 'none';
                 canvas3d.style.display = 'block';
-                update3D(data, densities);
+                update3D(data, densities, stresses);
             } else {
                 // 2D Mode
                 canvas3d.style.display = 'none';
@@ -245,13 +376,14 @@
                 
                 for (let y = 0; y < nely; y++) {
                     for (let x = 0; x < nelx; x++) {
-                        const val = densities[x * nely + y]; 
+                        const val = densities[x * nely + y];
+                        const s = stresses ? Math.min(1, Math.max(0, stresses[x * nely + y] / (data.stress_limit || 1))) : null;
                         const c = Math.max(0, Math.min(255, Math.floor((1 - val) * 255)));
                         
                         const idx = (y * nelx + x) * 4;
-                        imgData.data[idx] = c;
-                        imgData.data[idx+1] = c;
-                        imgData.data[idx+2] = c;
+                        imgData.data[idx] = stresses ? Math.floor(255 * s) : c;
+                        imgData.data[idx+1] = stresses ? Math.floor(220 * (1 - s)) : c;
+                        imgData.data[idx+2] = stresses ? Math.floor(80 * (1 - s)) : c;
                         imgData.data[idx+3] = 255;
                     }
                 }
@@ -262,12 +394,271 @@
             }
 
             // Update stats
-            statsEl.innerText = `Iter: ${data.iter} | Compliance: ${data.compliance.toFixed(2)} | Change: ${data.change.toFixed(4)}`;
+            const stressText = data.stress_ks !== undefined
+                ? ` | KS Stress: ${data.stress_ks.toFixed(3)} | Peak: ${data.stress_peak.toFixed(3)}`
+                : "";
+            statsEl.innerText = `Iter: ${data.iter} | Compliance: ${data.compliance.toFixed(2)} | Change: ${data.change.toFixed(4)}${stressText}`;
+        };
+
+        ws.onerror = function() {
+            statsEl.innerText = "Cannot reach server. Start it: python -m uvicorn server.app:app --host 127.0.0.1 --port 8000";
         };
 
         ws.onclose = function() {
-            statsEl.innerText = "WebSocket disconnected. Is server running?";
+            if (statsEl.innerText.indexOf("Cannot reach") === -1) {
+                statsEl.innerText = "WebSocket disconnected. Start server on http://127.0.0.1:8000";
+            }
         };
+
+        function onProblemChange() {
+            const prob = document.getElementById("prob").value;
+            document.getElementById("stl-upload-label").style.display =
+                prob === "custom" ? "inline" : "none";
+            document.getElementById("preview-bracket-btn").style.display =
+                (prob === "bracket" || prob === "custom") ? "inline-block" : "none";
+        }
+
+        const z88Templates = {
+            generic_bracket: {
+                support_box: { min: [-5, -2, -1], max: [-4, 2, 1] },
+                load_box: { min: [4, -2, -1], max: [5, 2, 1] },
+                force: [0, -250, 0],
+                material: "al_6061_t6",
+                safety_preset: "consumer_drone"
+            },
+            drone_motor_mount: {
+                frame_support_box: { min: [-5, -2, -1], max: [-4, 2, 1] },
+                motor_mount_box: { min: [4, -2, -1], max: [5, 2, 1] },
+                thrust: 25,
+                thrust_direction: [0, 0, 1],
+                prop_diameter: 10,
+                material: "al_6061_t6",
+                safety_preset: "consumer_drone"
+            },
+            drone_landing_gear: {
+                frame_support_box: { min: [-5, -2, -1], max: [-4, 2, 1] },
+                ground_contact_box: { min: [4, -2, -1], max: [5, 2, 1] },
+                payload_mass: 2.0,
+                impact_g: 4.0,
+                load_direction: [0, 0, 1],
+                material: "pa12_sls",
+                safety_preset: "consumer_drone"
+            },
+            drone_gimbal_mount: {
+                frame_support_box: { min: [-5, -2, -1], max: [-4, 2, 1] },
+                camera_mount_box: { min: [4, -2, -1], max: [5, 2, 1] },
+                camera_mass: 0.4,
+                maneuver_g: 2.5,
+                load_direction: [0, -1, 0],
+                target_vibration_frequency: 120,
+                material: "pa12_sls",
+                safety_preset: "consumer_drone"
+            },
+            ring_wing_strut: {
+                root_support_box: { min: [-5, -2, -1], max: [-4, 2, 1] },
+                wing_load_box: { min: [4, -2, -1], max: [5, 2, 1] },
+                lift_force_per_strut: 30,
+                lift_direction: [0, 0, 1],
+                material: "cf_pa",
+                safety_preset: "consumer_drone"
+            }
+        };
+
+        function z88Output(payload) {
+            document.getElementById("z88-output").innerText =
+                typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+        }
+
+        function loadZ88Template() {
+            const recipe = document.getElementById("z88Recipe").value;
+            const stlPath = document.getElementById("z88StlPath").value || "C:/path/to/part.stl";
+            const payload = {
+                recipe,
+                stl_path: stlPath,
+                project_name: recipe,
+                ...z88Templates[recipe]
+            };
+            document.getElementById("z88Payload").value = JSON.stringify(payload, null, 2);
+        }
+
+        function readZ88RecipePayload(prepareRun) {
+            const payload = JSON.parse(document.getElementById("z88Payload").value);
+            payload.recipe = document.getElementById("z88Recipe").value;
+            payload.stl_path = document.getElementById("z88StlPath").value || payload.stl_path;
+            payload.prepare_run = prepareRun;
+            const installRoot = document.getElementById("z88InstallRoot").value;
+            if (installRoot) payload.install_root = installRoot;
+            return payload;
+        }
+
+        async function loadZ88Catalog() {
+            try {
+                const [recipes, materials, safety] = await Promise.all([
+                    fetch("/z88/recipes").then(r => r.json()),
+                    fetch("/z88/materials").then(r => r.json()),
+                    fetch("/z88/safety_presets").then(r => r.json())
+                ]);
+                z88Output({ recipes, materials: Object.keys(materials), safety_presets: safety });
+            } catch (err) {
+                z88Output("Failed to load Z88 presets: " + err);
+            }
+        }
+
+        async function checkZ88Install() {
+            try {
+                const installRoot = document.getElementById("z88InstallRoot").value;
+                const query = installRoot ? `?install_root=${encodeURIComponent(installRoot)}` : "";
+                const res = await fetch(`/z88/discovery${query}`);
+                const data = await res.json();
+                z88Output(data);
+            } catch (err) {
+                z88Output("Z88 discovery failed: " + err);
+            }
+        }
+
+        async function generateZ88Samples() {
+            try {
+                const res = await fetch("/z88/samples/generate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ output_dir: "runs/z88_samples" })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || res.statusText);
+                if (data.samples && data.samples.length) {
+                    const first = data.samples[0];
+                    document.getElementById("z88Recipe").value = first.recipe;
+                    document.getElementById("z88StlPath").value = first.stl_path;
+                    document.getElementById("z88Payload").value = JSON.stringify(first.payload, null, 2);
+                }
+                z88Output(data);
+            } catch (err) {
+                z88Output("Z88 sample generation failed: " + err);
+            }
+        }
+
+        async function configureZ88Recipe(prepareRun) {
+            try {
+                const payload = readZ88RecipePayload(prepareRun);
+                const res = await fetch("/z88/recipes/configure", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || res.statusText);
+                if (data.run_dir) document.getElementById("z88RunDir").value = data.run_dir;
+                z88Output(data);
+            } catch (err) {
+                z88Output("Z88 recipe failed: " + err);
+            }
+        }
+
+        async function generateZ88NativeProject() {
+            try {
+                const recipePayload = readZ88RecipePayload(false);
+                const configRes = await fetch("/z88/recipes/configure", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(recipePayload)
+                });
+                const configData = await configRes.json();
+                if (!configRes.ok) throw new Error(configData.detail || configRes.statusText);
+
+                const projectDir = document.getElementById("z88RunDir").value;
+                const body = {
+                    config: configData.config,
+                    project_dir: projectDir || null,
+                    install_root: document.getElementById("z88InstallRoot").value || null,
+                    run_workflow: document.getElementById("z88RunWorkflow").checked,
+                    generate_stress: document.getElementById("z88GenerateStress").checked,
+                    solver: "siccg"
+                };
+                const res = await fetch("/z88/native/generate_project", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || res.statusText);
+                if (data.project_dir) document.getElementById("z88RunDir").value = data.project_dir;
+                z88Output(data);
+            } catch (err) {
+                z88Output("Z88 native generation failed: " + err);
+            }
+        }
+
+        async function runZ88Backend() {
+            try {
+                const projectDir = document.getElementById("z88RunDir").value;
+                if (!projectDir) {
+                    z88Output("Enter a run/project folder first.");
+                    return;
+                }
+                const res = await fetch("/z88/backend/run", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        project_dir: projectDir,
+                        install_root: document.getElementById("z88InstallRoot").value || null,
+                        solver: "siccg",
+                        generate_stress: document.getElementById("z88GenerateStress").checked
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || res.statusText);
+                z88Output(data);
+            } catch (err) {
+                z88Output("Z88 backend failed: " + err);
+            }
+        }
+
+        async function previewBracket() {
+            statsEl.innerText = "Loading bracket preview...";
+            const res = await fetch("http://127.0.0.1:8000/bracket/preview");
+            const data = await res.json();
+            statsEl.innerText = `Bracket ${data.nelx}x${data.nely}x${data.nelz}`;
+            const loader = new THREE.GLTFLoader();
+            loader.load(data.preview_glb, function (gltf) {
+                if (instancedMesh) scene.remove(instancedMesh);
+                if (glbMesh) scene.remove(glbMesh);
+                glbMesh = gltf.scene;
+                scene.add(glbMesh);
+                canvas2d.style.display = "none";
+                canvas3d.style.display = "block";
+            });
+        }
+
+        async function uploadStl() {
+            const fileInput = document.getElementById("stlFile");
+            const pitch = parseFloat(document.getElementById("pitch").value) || 1.0;
+            if (!fileInput.files.length) {
+                statsEl.innerText = "Choose an STL file first.";
+                return;
+            }
+            const form = new FormData();
+            form.append("file", fileInput.files[0]);
+            form.append("pitch", String(pitch));
+            statsEl.innerText = "Uploading / voxelizing...";
+            const res = await fetch("http://127.0.0.1:8000/upload_stl", { method: "POST", body: form });
+            const data = await res.json();
+            if (data.error) {
+                statsEl.innerText = "Upload failed: " + data.error;
+                return;
+            }
+            statsEl.innerText = `Loaded ${data.nelx}x${data.nely}x${data.nelz} (${data.num_solid} solid voxels)`;
+            if (data.preview_glb) {
+                const loader = new THREE.GLTFLoader();
+                loader.load(data.preview_glb, function (gltf) {
+                    if (instancedMesh) scene.remove(instancedMesh);
+                    if (glbMesh) scene.remove(glbMesh);
+                    glbMesh = gltf.scene;
+                    scene.add(glbMesh);
+                    canvas2d.style.display = "none";
+                    canvas3d.style.display = "block";
+                });
+            }
+        }
 
         async function startOptimization() {
             const prob = document.getElementById("prob").value;
@@ -276,29 +667,68 @@
             statsEl.innerText = "Starting...";
             
             let nelx = 60, nely = 20, nelz = 0;
+            let volfrac = 0.5;
+            let body = { problem: prob, method: method, nelx, nely, nelz, volfrac, max_iter: 30, rmin: 2.0 };
+
             if (prob === "cantilever3d") {
-                nelx = 60;
-                nely = 20;
-                nelz = 4;
+                nelx = 60; nely = 20; nelz = 4; volfrac = 0.3;
+                body = { ...body, nelx, nely, nelz, volfrac };
             } else if (prob === "cantilever2d") {
-                nelx = 60;
-                nely = 30;
+                nelx = 60; nely = 30;
+                body = { ...body, nelx, nely, nelz: 0 };
+            } else if (prob === "bracket") {
+                body = {
+                    problem: "bracket",
+                    method,
+                    nelx: 28,
+                    nely: 20,
+                    nelz: 6,
+                    volfrac: 0.4,
+                    max_iter: 50,
+                    rmin: 2.0,
+                    penal: 3.0,
+                    stress_limit: 1.6,
+                    stress_relief_radius: 2.0,
+                    stress_relief_steps: 6,
+                    stress_hotspot_density: 0.9,
+                };
+            } else if (prob === "custom") {
+                const state = await fetch("http://127.0.0.1:8000/upload_state").then(r => r.json());
+                if (!state.loaded) {
+                    statsEl.innerText = "Upload an STL first (or server uses default box).";
+                }
+                body = {
+                    problem: "custom",
+                    method,
+                    nelx: state.loaded ? state.nelx : 20,
+                    nely: state.loaded ? state.nely : 12,
+                    nelz: state.loaded ? state.nelz : 6,
+                    volfrac: 0.4,
+                    max_iter: 40,
+                    rmin: 2.0,
+                    stress_limit: 1.6,
+                    stress_relief_radius: 2.0,
+                    stress_relief_steps: 6,
+                    stress_hotspot_density: 0.9,
+                    passive_boxes: [{ x0: 0, x1: 2, y0: 0, y1: 2, z0: 0, z1: 2 }],
+                    fixed_face: { x0: 0, x1: 0, y0: 0, y1: state.nely || 12, z0: 0, z1: state.nelz || 6 },
+                    load_point: [
+                        (state.nelx || 20) - 1,
+                        Math.floor((state.nely || 12) / 2),
+                        Math.floor((state.nelz || 6) / 2),
+                    ],
+                };
             }
 
             await fetch("http://127.0.0.1:8000/run", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    problem: prob,
-                    method: method,
-                    nelx: nelx,
-                    nely: nely,
-                    nelz: nelz,
-                    volfrac: (prob === "cantilever3d" ? 0.3 : 0.5),
-                    max_iter: 20
-                })
+                body: JSON.stringify(body),
             });
         }
+
+        onProblemChange();
+        loadZ88Template();
     </script>
 </body>
 </html>
