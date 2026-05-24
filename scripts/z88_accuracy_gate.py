@@ -111,6 +111,7 @@ def _check_online_workflow(path: Path) -> dict[str, Any]:
         histories = workflow.get("histories")
         displacement = workflow.get("displacement_summary")
         stress = workflow.get("stress_summary")
+        optimized_export = workflow.get("optimized_export")
         nodal_stress = stress.get("nodal") if isinstance(stress, dict) else None
         elemental_stress = stress.get("elemental") if isinstance(stress, dict) else None
         compliance = histories.get("overall_compliance") if isinstance(histories, dict) else None
@@ -126,6 +127,15 @@ def _check_online_workflow(path: Path) -> dict[str, Any]:
                 "max_displacement": displacement.get("max_magnitude") if isinstance(displacement, dict) else None,
                 "max_nodal_stress": nodal_stress.get("max_value") if isinstance(nodal_stress, dict) else None,
                 "max_elemental_stress": elemental_stress.get("max_value") if isinstance(elemental_stress, dict) else None,
+                "optimized_export_status": optimized_export.get("status")
+                if isinstance(optimized_export, dict)
+                else None,
+                "optimized_stl": optimized_export.get("optimized_stl")
+                if isinstance(optimized_export, dict)
+                else None,
+                "mesh_quality_json": optimized_export.get("mesh_quality_json")
+                if isinstance(optimized_export, dict)
+                else None,
             }
         )
 
@@ -139,6 +149,10 @@ def _check_online_workflow(path: Path) -> dict[str, Any]:
             and isinstance(displacement.get("max_magnitude"), int | float)
             and _summary_has_rows(nodal_stress)
             and _summary_has_rows(elemental_stress)
+            and isinstance(optimized_export, dict)
+            and optimized_export.get("status") in {"exported", "exported_with_warnings"}
+            and bool(optimized_export.get("optimized_stl"))
+            and bool(optimized_export.get("mesh_quality_json"))
         )
         item["status"] = "passed" if passed else "failed"
         source_checks.append(item)

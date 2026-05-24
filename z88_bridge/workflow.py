@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .export import OptimizedStlExportResult, export_optimized_stl_from_generated_project
 from .headless import GeneratedOptimizerRunResult, run_generated_optimizer_project
 from .postprocess import (
     Z88PostprocessRunResult,
@@ -23,6 +24,7 @@ class GeneratedOCWorkflowResult:
     optimizer: GeneratedOptimizerRunResult | None
     displacement: Z88PostprocessRunResult | None
     stress: Z88StressPostprocessRunResult | None
+    optimized_export: OptimizedStlExportResult | None
     native_results: NativeResultSummary
     native_results_json: str
     messages: tuple[str, ...]
@@ -34,6 +36,7 @@ class GeneratedOCWorkflowResult:
             "optimizer": self.optimizer.to_dict() if self.optimizer else None,
             "displacement": self.displacement.to_dict() if self.displacement else None,
             "stress": self.stress.to_dict() if self.stress else None,
+            "optimized_export": self.optimized_export.to_dict() if self.optimized_export else None,
             "native_results": self.native_results.to_dict(),
             "native_results_json": self.native_results_json,
             "messages": list(self.messages),
@@ -68,6 +71,7 @@ class GeneratedOCWorkflowResult:
             "snapshots": snapshots,
             "displacement_summary": native["displacement"],
             "stress_summary": native["stress"],
+            "optimized_export": self.optimized_export.to_dict() if self.optimized_export else None,
             "native_results_json": self.native_results_json,
             "messages": list(self.messages),
         }
@@ -87,6 +91,7 @@ def run_generated_oc_workflow(
     run_optimizer: bool = True,
     generate_displacements: bool = True,
     generate_stress: bool = False,
+    export_optimized_stl: bool = True,
 ) -> GeneratedOCWorkflowResult:
     """Run the currently confirmed generated-OC workflow end to end."""
     project_dir = Path(project_dir).resolve()
@@ -94,6 +99,7 @@ def run_generated_oc_workflow(
     optimizer: GeneratedOptimizerRunResult | None = None
     displacement: Z88PostprocessRunResult | None = None
     stress: Z88StressPostprocessRunResult | None = None
+    optimized_export: OptimizedStlExportResult | None = None
 
     if run_optimizer:
         optimizer = run_generated_optimizer_project(
@@ -141,6 +147,14 @@ def run_generated_oc_workflow(
     native_results = collect_native_results(project_dir)
     native_results_json = project_dir / "z88_native_results.json"
     native_results.write_json(native_results_json)
+    if export_optimized_stl and supports_automatic_stl_export(project_dir):
+        optimized_export = export_optimized_stl_from_generated_project(project_dir)
+        if optimized_export.status not in {"exported", "exported_with_warnings"}:
+            messages.append(f"optimized STL export status: {optimized_export.status}")
+        if optimized_export.warnings:
+            messages.extend(f"optimized STL export warning: {warning}" for warning in optimized_export.warnings)
+        if optimized_export.parse_errors:
+            messages.extend(f"optimized STL export parse error: {error}" for error in optimized_export.parse_errors)
 
     status = _workflow_status(optimizer, displacement, native_results, messages)
     result = GeneratedOCWorkflowResult(
@@ -149,6 +163,7 @@ def run_generated_oc_workflow(
         optimizer=optimizer,
         displacement=displacement,
         stress=stress,
+        optimized_export=optimized_export,
         native_results=native_results,
         native_results_json=str(native_results_json),
         messages=tuple(messages),
@@ -197,6 +212,11 @@ def supports_automatic_stress_postprocess(project_dir: str | Path) -> bool:
         return False
     required_counts = ("node_count", "element_count", "boundary_condition_count")
     return all(isinstance(write_data.get(name), int) and write_data[name] > 0 for name in required_counts)
+
+
+def supports_automatic_stl_export(project_dir: str | Path) -> bool:
+    """Return whether density-to-STL export is inside the confirmed scope."""
+    return supports_automatic_stress_postprocess(project_dir) and (Path(project_dir) / "z88i1.txt").is_file()
 
 
 def _unsupported_stress_result(project_dir: Path) -> Z88StressPostprocessRunResult:

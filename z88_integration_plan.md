@@ -87,6 +87,10 @@ unverified format assumptions.
   - `scripts/z88_run_generated_workflow.py` orchestrates the confirmed
     GUI-generated OC path: optimizer replay, displacement postprocess, and
     native result collection.
+  - Wrapper-generated OC/H8 workflows now export a thresholded voxel
+    `optimized.stl`, write `mesh_quality.json`, and record
+    `z88_optimized_stl_export.json` when final `PhysicalDensity` output is
+    available.
   - A copied `1_Balken_OC` GUI-generated folder completed this workflow
     locally in about 50 seconds.
   - `scripts/z88_run_backend.py` now routes GUI-generated OC folders to the
@@ -758,8 +762,9 @@ Completed by this roadmap update:
 
 Current next pass:
 
-1. Test the browser/API native OC/H8 generation path on a real drone STL part
-   and record the generated run output under `runs/` or `z88_assets/outputs/`.
+1. In progress for practical wrapper scope: smooth the simple-structure
+   workflow around wrapper-generated OC/H8 projects. Current implemented piece:
+   generated workflows export `optimized.stl` and mesh QA automatically.
 2. Run a clean Windows VM validation of `dist/Z88TopologyOptimizer.exe`.
 3. Completed in tests: the API now generates sample STLs, configures the
    `generic_bracket_box` recipe payload, and writes a native OC/H8 project from

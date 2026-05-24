@@ -40,6 +40,7 @@ def _workflow(project_dir: Path, status: str = "completed") -> GeneratedOCWorkfl
         optimizer=None,
         displacement=None,
         stress=None,
+        optimized_export=None,
         native_results=native,
         native_results_json=str(project_dir / "z88_native_results.json"),
         messages=(),

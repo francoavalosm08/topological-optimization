@@ -38,6 +38,12 @@ from .config import (
     Z88RunConfig,
 )
 from .crash_reports import CrashReport, write_crash_report
+from .export import (
+    OptimizedStlExportResult,
+    export_optimized_stl_from_generated_project,
+    parse_scalar_field_values,
+    parse_z88i1_h8,
+)
 from .headless import (
     GeneratedOptimizerPreparation,
     GeneratedOptimizerRunResult,
@@ -110,7 +116,12 @@ from .recipes import (
     suggest_end_boxes_from_stl,
 )
 from .samples import SAMPLE_ASSETS, SampleAsset, generate_sample_assets
-from .workflow import GeneratedOCWorkflowResult, run_generated_oc_workflow, supports_automatic_stress_postprocess
+from .workflow import (
+    GeneratedOCWorkflowResult,
+    run_generated_oc_workflow,
+    supports_automatic_stl_export,
+    supports_automatic_stress_postprocess,
+)
 
 __all__ = [
     "ActiveSet",
@@ -135,6 +146,7 @@ __all__ = [
     "NativeOCProjectWriteResult",
     "OptimizationResult",
     "OptimizerSettings",
+    "OptimizedStlExportResult",
     "PackagingPreflight",
     "PreflightCheck",
     "RegionSpec",
@@ -180,6 +192,7 @@ __all__ = [
     "diff_project_dirs",
     "ensure_asset_layout",
     "ensure_guided_handoff",
+    "export_optimized_stl_from_generated_project",
     "find_generated_oc_project_dir",
     "find_latest_constitutive_law",
     "generate_sample_assets",
@@ -191,8 +204,10 @@ __all__ = [
     "normalize_solver_arg",
     "parse_displacement_summary",
     "parse_counted_scalar_field_summary",
+    "parse_scalar_field_values",
     "parse_scalar_field_summary",
     "parse_z88control",
+    "parse_z88i1_h8",
     "parse_z88setsactive",
     "parse_scalar_history",
     "parse_z88structure_header",
@@ -209,6 +224,7 @@ __all__ = [
     "sha256_file",
     "summarize_project_files",
     "summarize_native_project_capability",
+    "supports_automatic_stl_export",
     "supports_automatic_stress_postprocess",
     "suggest_end_boxes_from_stl",
     "write_audit_outputs",

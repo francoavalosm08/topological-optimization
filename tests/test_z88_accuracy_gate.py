@@ -49,6 +49,11 @@ def test_accuracy_gate_passes_with_expected_local_evidence(tmp_path: Path) -> No
                                 "nodal": {"row_count": 2, "max_value": 3.0},
                                 "elemental": {"row_count": 1, "max_value": 4.0},
                             },
+                            "optimized_export": {
+                                "status": "exported",
+                                "optimized_stl": "optimized.stl",
+                                "mesh_quality_json": "mesh_quality.json",
+                            },
                         },
                     }
                 ]

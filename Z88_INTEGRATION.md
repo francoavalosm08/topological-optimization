@@ -56,6 +56,10 @@ Implemented:
   <element> <energy>` argv contract.
 - End-to-end generated OC workflow orchestration with
   `scripts/z88_run_generated_workflow.py`.
+- Automatic optimized STL export and mesh QA for wrapper-generated OC/H8
+  projects. The workflow thresholds the final `PhysicalDensity` field, writes
+  `optimized.stl`, writes `mesh_quality.json`, and records
+  `z88_optimized_stl_export.json`.
 - Best-available backend entry point with `scripts/z88_run_backend.py`.
 - Phase G explicit-box recipe layer:
   - material presets under `presets/materials/`
@@ -223,6 +227,9 @@ Current generated-project limits:
   marginal setup can be adjusted before running Z88.
 - Very low volume fractions can still produce singular Z88 solves even after
   these checks if the remaining design region cannot form a connected load path.
+- Generated OC/H8 workflows now produce `optimized.stl` and `mesh_quality.json`
+  automatically when final density output is available. This export is a
+  thresholded voxel surface, not Z88Arion's smoothed GUI STL.
 
 Validate every generated recipe sample through recipe config, STL inspection,
 and native OC/H8 project writing:

@@ -24,6 +24,8 @@ def test_web_ui_exposes_region_box_helper() -> None:
     assert "applyZ88VisualSlab" in html
     assert "z88BoxPreview" in html
     assert "generated OC/H8 only" in html
+    assert "optimized.stl" in html
+    assert "mesh_quality.json" in html
 
 
 def test_web_ui_loads_z88_capabilities() -> None:
