@@ -17,7 +17,7 @@ from .headless import normalize_solver_arg
 MATERIAL_ITERATION_RE = re.compile(r"z88mat(\d+)\.txt$", re.IGNORECASE)
 SUCCESS_MARKER = ">>> Z88R >>> Programm erfolgreich gelaufen!"
 
-PostprocessStatus = Literal["completed", "missing_inputs", "timed_out", "failed"]
+PostprocessStatus = Literal["completed", "missing_inputs", "timed_out", "crashed", "failed", "unsupported"]
 
 
 @dataclass(frozen=True)
@@ -344,6 +344,8 @@ def classify_postprocess_run(
         return "completed"
     if "fehlt" in combined or "cannot open" in combined.lower():
         return "missing_inputs"
+    if _is_crash_returncode(returncode):
+        return "crashed"
     if returncode == 0 and output_exists:
         return "completed"
     return "failed"
@@ -366,6 +368,8 @@ def classify_stress_postprocess_run(
     success = ">>> Z88RTOSS >>> Programm erfolgreich gelaufen!" in combined
     if success and nodal_output_exists and element_output_exists:
         return "completed"
+    if _is_crash_returncode(returncode):
+        return "crashed"
     if returncode == 0 and nodal_output_exists and element_output_exists:
         return "completed"
     return "failed"
@@ -384,6 +388,15 @@ def _decode_process_output(data: bytes | str | None) -> str:
     if isinstance(data, str):
         return data
     return data.decode("utf-8", errors="replace")
+
+
+def _is_crash_returncode(returncode: int | None) -> bool:
+    if returncode is None:
+        return False
+    # Windows access violation is commonly reported as unsigned 0xC0000005 by
+    # Python subprocess on this machine. Negative codes represent terminated
+    # processes on other platforms, but keep the observed Z88 success sentinel.
+    return returncode == 0xC0000005 or (returncode < 0 and returncode != -12345)
 
 
 def _ensure_z88r_runtime(project_dir: Path) -> None:

@@ -46,13 +46,17 @@ from z88_bridge import (
     configure_drone_landing_gear,
     configure_drone_motor_mount,
     configure_generic_bracket,
+    configure_recipe_from_payload,
     configure_ring_wing_strut,
+    current_capabilities,
     discover_installation,
     generate_sample_assets,
+    inspect_stl_geometry,
     load_material_presets,
     load_safety_presets,
     run_best_available_backend,
     run_generated_oc_workflow,
+    suggest_end_boxes_from_stl,
     write_native_oc_project,
 )
 
@@ -186,6 +190,17 @@ class Z88CollectNativeRequest(BaseModel):
 
 class Z88SampleGenerateRequest(BaseModel):
     output_dir: str = "runs/z88_samples"
+
+
+class Z88StlInspectRequest(BaseModel):
+    stl_path: str
+
+
+class Z88SuggestBoxesRequest(BaseModel):
+    stl_path: str
+    axis: str = "longest"
+    thickness_fraction: float = Field(default=0.1, gt=0, le=0.5)
+    minimum_thickness: float | None = Field(default=None, gt=0)
 
 
 def _apply_passive_boxes(masks: RegionMasks, nelx: int, nely: int, nelz: int, boxes: list[BoxRegion]) -> RegionMasks:
@@ -440,6 +455,11 @@ def z88_recipes():
     return available_recipes()
 
 
+@app.get("/z88/capabilities")
+def z88_capabilities():
+    return {"capabilities": current_capabilities()}
+
+
 @app.get("/z88/discovery")
 def z88_discovery(install_root: str | None = None):
     try:
@@ -455,6 +475,47 @@ def z88_generate_samples(req: Z88SampleGenerateRequest):
         return {"status": "generated", **generate_sample_assets(req.output_dir)}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/z88/stl/inspect")
+def z88_inspect_stl(req: Z88StlInspectRequest):
+    try:
+        return {"status": "inspected", "geometry": inspect_stl_geometry(req.stl_path)}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (RecipeInputError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/z88/stl/suggest_end_boxes")
+def z88_suggest_end_boxes(req: Z88SuggestBoxesRequest):
+    try:
+        return {
+            "status": "suggested",
+            **suggest_end_boxes_from_stl(
+                req.stl_path,
+                axis=req.axis,
+                thickness_fraction=req.thickness_fraction,
+                minimum_thickness=req.minimum_thickness,
+            ),
+        }
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (RecipeInputError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/z88/recipes/validate")
+def z88_validate_recipe(req: Z88RecipeConfigureRequest):
+    try:
+        config = _build_z88_recipe_config(req)
+        config.validate()
+        geometry = inspect_stl_geometry(config.input_stl)
+        return {"status": "valid", "config": config.to_dict(), "geometry": geometry}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (RecipeInputError, ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/z88/recipes/configure")
@@ -579,103 +640,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 def _build_z88_recipe_config(req: Z88RecipeConfigureRequest) -> Z88RunConfig:
-    material_key = req.material or _default_material(req.recipe)
-    project_name = req.project_name or req.recipe
-    volume_fraction = req.volume_fraction if req.volume_fraction is not None else _default_volume_fraction(req.recipe)
-    if req.recipe == "generic_bracket":
-        return configure_generic_bracket(
-            req.stl_path,
-            GenericBracketInputs(
-                units=req.units,
-                material_key=material_key,
-                safety_preset=req.safety_preset,
-                support_box=_box(req.support_box, "support_box"),
-                load_box=_box(req.load_box, "load_box"),
-                force=req.force or (0.0, -100.0, 0.0),
-                project_name=project_name,
-                voxel_pitch=req.voxel_pitch,
-                volume_fraction=volume_fraction,
-                max_iterations=req.max_iterations,
-                convergence_tolerance=req.convergence_tolerance,
-            ),
-        )
-    if req.recipe == "drone_motor_mount":
-        return configure_drone_motor_mount(
-            req.stl_path,
-            DroneMotorMountInputs(
-                units=req.units,
-                material_key=material_key,
-                safety_preset=req.safety_preset,
-                frame_support_box=_box(req.frame_support_box, "frame_support_box"),
-                motor_mount_box=_box(req.motor_mount_box, "motor_mount_box"),
-                thrust=_required_float(req.thrust, "thrust"),
-                thrust_direction=req.thrust_direction,
-                prop_diameter=req.prop_diameter,
-                project_name=project_name,
-                voxel_pitch=req.voxel_pitch,
-                volume_fraction=volume_fraction,
-                max_iterations=req.max_iterations,
-                convergence_tolerance=req.convergence_tolerance,
-            ),
-        )
-    if req.recipe == "drone_landing_gear":
-        return configure_drone_landing_gear(
-            req.stl_path,
-            DroneLandingGearInputs(
-                units=req.units,
-                material_key=material_key,
-                safety_preset=req.safety_preset,
-                frame_support_box=_box(req.frame_support_box, "frame_support_box"),
-                ground_contact_box=_box(req.ground_contact_box, "ground_contact_box"),
-                payload_mass=_required_float(req.payload_mass, "payload_mass"),
-                impact_g=req.impact_g,
-                load_direction=req.load_direction,
-                project_name=project_name,
-                voxel_pitch=req.voxel_pitch,
-                volume_fraction=volume_fraction,
-                max_iterations=req.max_iterations,
-                convergence_tolerance=req.convergence_tolerance,
-            ),
-        )
-    if req.recipe == "drone_gimbal_mount":
-        return configure_drone_gimbal_mount(
-            req.stl_path,
-            DroneGimbalMountInputs(
-                units=req.units,
-                material_key=material_key,
-                safety_preset=req.safety_preset,
-                frame_support_box=_box(req.frame_support_box, "frame_support_box"),
-                camera_mount_box=_box(req.camera_mount_box, "camera_mount_box"),
-                camera_mass=_required_float(req.camera_mass, "camera_mass"),
-                maneuver_g=req.maneuver_g,
-                load_direction=req.load_direction,
-                target_vibration_frequency=req.target_vibration_frequency,
-                project_name=project_name,
-                voxel_pitch=req.voxel_pitch,
-                volume_fraction=volume_fraction,
-                max_iterations=req.max_iterations,
-                convergence_tolerance=req.convergence_tolerance,
-            ),
-        )
-    if req.recipe == "ring_wing_strut":
-        return configure_ring_wing_strut(
-            req.stl_path,
-            RingWingStrutInputs(
-                units=req.units,
-                material_key=material_key,
-                safety_preset=req.safety_preset,
-                root_support_box=_box(req.root_support_box, "root_support_box"),
-                wing_load_box=_box(req.wing_load_box, "wing_load_box"),
-                lift_force_per_strut=_required_float(req.lift_force_per_strut, "lift_force_per_strut"),
-                lift_direction=req.lift_direction,
-                project_name=project_name,
-                voxel_pitch=req.voxel_pitch,
-                volume_fraction=volume_fraction,
-                max_iterations=req.max_iterations,
-                convergence_tolerance=req.convergence_tolerance,
-            ),
-        )
-    raise RecipeInputError(f"Unknown recipe {req.recipe!r}. Choices: {', '.join(sorted(available_recipes()))}")
+    return configure_recipe_from_payload(req.model_dump(exclude_none=True))
 
 
 def _box(value: Z88BoxRequest | None, label: str) -> BoxSelector | None:

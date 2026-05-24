@@ -10,7 +10,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from z88_bridge import Z88NotInstalledError, discover_installation, summarize_project_files
+from z88_bridge import (
+    Z88NotInstalledError,
+    current_capabilities,
+    discover_installation,
+    summarize_native_project_capability,
+    summarize_project_files,
+)
 
 
 IMPORTANT_BINARIES = (
@@ -67,6 +73,11 @@ def build_audit(install_root: str | None) -> dict[str, object]:
         "sample_docs": docs[:20],
         "sample_examples": example_files[:50],
         "observed_optalgorithm_projects": algorithms,
+        "current_capabilities": current_capabilities(),
+        "project_capabilities": [
+            summarize_native_project_capability(item["project_dir"])
+            for item in project_summaries
+        ],
         "sample_project_summaries": project_summaries[:5],
         "headless_status": (
             "unknown: project/result file contract must be mapped from a manual "

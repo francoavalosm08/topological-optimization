@@ -22,6 +22,7 @@ def main() -> int:
     parser.add_argument("--element-output-file", help="Defaults to Stresses_ELE\\Stress_ele_final.txt")
     parser.add_argument("--energy-output-file", help="Defaults to tmp\\ElementEnergy_final.txt")
     parser.add_argument("--material-file", help="Override ConstitutiveLaw\\z88matNNN.txt")
+    parser.add_argument("--output-dir", help="Directory for stdout/stderr/run JSON. Defaults inside the project.")
     parser.add_argument("--timeout", type=float, default=300.0)
     args = parser.parse_args()
 
@@ -34,6 +35,7 @@ def main() -> int:
         energy_output_file=args.energy_output_file,
         material_file=args.material_file,
         timeout_s=args.timeout,
+        output_dir=args.output_dir,
     )
     print(json.dumps(result.to_dict(), indent=2))
     return 0 if result.status == "completed" else 2

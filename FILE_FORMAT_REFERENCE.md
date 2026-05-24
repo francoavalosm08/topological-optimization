@@ -149,6 +149,56 @@ Bug risk:
 - Tet element type and node ordering are not confirmed for generated files.
   Native project writing must not assume a node ordering before fixture proof.
 
+## TetGen / Tetrahedral Structure Probe
+
+Confidence: `OBSERVED`
+
+Probe command:
+
+```powershell
+python scripts\z88_tetgen_probe.py runs\z88_representative_drone_samples\generic_bracket_box.stl --probe-direct-stl --output-dir z88_assets\outputs\tetgen_probe\representative_generic_bracket
+```
+
+Observed direct-STL behavior:
+
+- `tetgen.exe -pl generic_bracket_box.stl` returned code `3`.
+- Stdout reported `Wrong number of vertices in file generic_bracket_box.stl`.
+- Treat this as evidence that the installed TetGen path should not be fed the
+  current binary STL export directly.
+
+Observed OFF-conversion behavior:
+
+- The probe converts STL to OFF with `trimesh`, then runs
+  `tetgen.exe -pl generic_bracket_box.off`.
+- TetGen completed and wrote `z88structure.txt`.
+- Observed header:
+
+```text
+3 222 533 666 0 #AURORA_V2
+```
+
+- First node ID is `0`, so this TetGen output is zero-based.
+- First observed element block uses element type `17` and four node IDs.
+
+Writer status: `DEFERRED`.
+
+This confirms only a TetGen-to-`z88structure.txt` probe path. It does not
+confirm enough to generate complete tetrahedral Z88Arion projects from raw
+STL/config, because material, boundary condition, optimizer, runtime, and GUI
+intermediate file contracts still need separate proof.
+
+Additional online-STL probe evidence:
+
+- `z88_assets/online_stls/downloads/wikimedia_cube.stl` failed as direct STL
+  input, but succeeded after conversion to OFF and wrote a small
+  `z88structure.txt` with header `3 8 6 24 0 #AURORA_V2`.
+- `z88_assets/online_stls/downloads/nist_am_test_artifact/NIST Test Artifact online.STL`
+  failed through both direct STL input and OFF conversion.
+
+Conclusion: this path is geometry-sensitive and remains a probe only. The
+confirmed raw-STL/config writer path is still OC/H8 voxel generation, not
+general tetrahedral generation.
+
 ## `z88marks.txt`
 
 Confidence: `OBSERVED`
@@ -515,7 +565,8 @@ Current evidence:
   nodal-stress output path, material file, `z88i1.txt`, `z88i2.txt`,
   element-stress output path, and an energy output path.
 - On the copied `1_Balken_OC` OC fixture, that `z88rTOSS.exe -SIG` probe
-  crashed after creating an empty nodal-stress output.
+  crashed with Windows access violation return code `3221225477` after creating
+  a partial element-energy output and an empty nodal-stress output.
 - On the generated 45-element OC/H8 smoke project, this command completed and
   wrote non-empty nodal and element stress files:
 
@@ -528,6 +579,9 @@ Important runtime detail:
 - `z88rTOSS.exe` can return `4294954951` / signed `-12345` while printing
   `>>> Z88RTOSS >>> Programm erfolgreich gelaufen!` and writing output files.
   Treat the success marker plus non-empty output files as authoritative.
+- `z88rTOSS.exe` can also return `3221225477` / Windows access violation on
+  larger copied GUI-generated OC fixtures. Treat that as `crashed`, not as a
+  parse failure.
 - The final argument is an output file for element energy/`uKu`; do not point it
   at `Displacements\Displacements_final.txt` or the displacement file will be
   overwritten.

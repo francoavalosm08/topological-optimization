@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import trimesh
 
 from .config import (
@@ -485,6 +486,169 @@ def available_recipes() -> dict[str, dict[str, Any]]:
     }
 
 
+def configure_recipe_from_payload(
+    payload: dict[str, Any],
+    *,
+    presets_root: str | Path = DEFAULT_PRESETS_ROOT,
+    validate_geometry: bool = True,
+) -> Z88RunConfig:
+    """Build a recipe config from the JSON payload used by CLI/API/UI surfaces."""
+    recipe = str(payload.get("recipe", ""))
+    stl_path = payload.get("stl_path")
+    if not stl_path:
+        raise RecipeInputError("stl_path is required")
+    material_key = payload.get("material") or _default_material(recipe)
+    project_name = payload.get("project_name") or recipe
+    volume_fraction = float(payload.get("volume_fraction", _default_volume_fraction(recipe)))
+    common = {
+        "units": payload.get("units", "mm"),
+        "material_key": material_key,
+        "safety_preset": payload.get("safety_preset", "consumer_drone"),
+        "project_name": project_name,
+        "voxel_pitch": float(payload.get("voxel_pitch", 1.0)),
+        "volume_fraction": volume_fraction,
+        "max_iterations": int(payload.get("max_iterations", 120)),
+        "convergence_tolerance": float(payload.get("convergence_tolerance", 1e-3)),
+    }
+    if recipe == "generic_bracket":
+        return configure_generic_bracket(
+            stl_path,
+            GenericBracketInputs(
+                **common,
+                support_box=_box_from_payload(payload, "support_box"),
+                load_box=_box_from_payload(payload, "load_box"),
+                force=_vector_from_payload(payload, "force", default=(0.0, -100.0, 0.0)),
+            ),
+            presets_root=presets_root,
+            validate_geometry=validate_geometry,
+        )
+    if recipe == "drone_motor_mount":
+        return configure_drone_motor_mount(
+            stl_path,
+            DroneMotorMountInputs(
+                **common,
+                frame_support_box=_box_from_payload(payload, "frame_support_box"),
+                motor_mount_box=_box_from_payload(payload, "motor_mount_box"),
+                thrust=_required_float_payload(payload, "thrust"),
+                thrust_direction=_vector_from_payload(payload, "thrust_direction", default=(0.0, 0.0, 1.0)),
+                prop_diameter=_optional_float_payload(payload, "prop_diameter"),
+            ),
+            presets_root=presets_root,
+            validate_geometry=validate_geometry,
+        )
+    if recipe == "drone_landing_gear":
+        return configure_drone_landing_gear(
+            stl_path,
+            DroneLandingGearInputs(
+                **common,
+                frame_support_box=_box_from_payload(payload, "frame_support_box"),
+                ground_contact_box=_box_from_payload(payload, "ground_contact_box"),
+                payload_mass=_required_float_payload(payload, "payload_mass"),
+                impact_g=float(payload.get("impact_g", 3.0)),
+                load_direction=_vector_from_payload(payload, "load_direction", default=(0.0, 0.0, 1.0)),
+            ),
+            presets_root=presets_root,
+            validate_geometry=validate_geometry,
+        )
+    if recipe == "drone_gimbal_mount":
+        return configure_drone_gimbal_mount(
+            stl_path,
+            DroneGimbalMountInputs(
+                **common,
+                frame_support_box=_box_from_payload(payload, "frame_support_box"),
+                camera_mount_box=_box_from_payload(payload, "camera_mount_box"),
+                camera_mass=_required_float_payload(payload, "camera_mass"),
+                maneuver_g=float(payload.get("maneuver_g", 3.0)),
+                load_direction=_vector_from_payload(payload, "load_direction", default=(0.0, -1.0, 0.0)),
+                target_vibration_frequency=_optional_float_payload(payload, "target_vibration_frequency"),
+            ),
+            presets_root=presets_root,
+            validate_geometry=validate_geometry,
+        )
+    if recipe == "ring_wing_strut":
+        return configure_ring_wing_strut(
+            stl_path,
+            RingWingStrutInputs(
+                **common,
+                root_support_box=_box_from_payload(payload, "root_support_box"),
+                wing_load_box=_box_from_payload(payload, "wing_load_box"),
+                lift_force_per_strut=_required_float_payload(payload, "lift_force_per_strut"),
+                lift_direction=_vector_from_payload(payload, "lift_direction", default=(0.0, 0.0, 1.0)),
+            ),
+            presets_root=presets_root,
+            validate_geometry=validate_geometry,
+        )
+    raise RecipeInputError(f"Unknown recipe {recipe!r}. Choices: {', '.join(sorted(available_recipes()))}")
+
+
+def inspect_stl_geometry(stl_path: str | Path) -> dict[str, Any]:
+    """Return bounded mesh metadata for UI and recipe preflight checks."""
+    stl_path = Path(stl_path)
+    if not stl_path.is_file():
+        raise FileNotFoundError(f"STL not found: {stl_path}")
+    mesh = trimesh.load_mesh(stl_path, force="mesh")
+    if isinstance(mesh, trimesh.Scene):
+        mesh = mesh.dump(concatenate=True)
+    if mesh.is_empty:
+        raise RecipeInputError(f"STL mesh is empty: {stl_path}")
+    bounds = np.asarray(mesh.bounds, dtype=float)
+    extents = np.asarray(mesh.extents, dtype=float)
+    center = np.asarray(mesh.centroid, dtype=float)
+    return {
+        "path": str(stl_path.resolve()),
+        "bounds": {
+            "min": [float(value) for value in bounds[0]],
+            "max": [float(value) for value in bounds[1]],
+        },
+        "extents": [float(value) for value in extents],
+        "center": [float(value) for value in center],
+        "vertices": int(len(mesh.vertices)),
+        "faces": int(len(mesh.faces)),
+        "watertight": bool(mesh.is_watertight),
+        "volume": float(mesh.volume) if mesh.is_watertight else None,
+        "area": float(mesh.area),
+    }
+
+
+def suggest_end_boxes_from_stl(
+    stl_path: str | Path,
+    *,
+    axis: str = "longest",
+    thickness_fraction: float = 0.1,
+    minimum_thickness: float | None = None,
+) -> dict[str, Any]:
+    """Suggest simple support/load slabs at opposite ends of an STL bounding box."""
+    if not math.isfinite(thickness_fraction) or not (0.0 < thickness_fraction <= 0.5):
+        raise RecipeInputError("thickness_fraction must be finite and in (0, 0.5]")
+    geometry = inspect_stl_geometry(stl_path)
+    lower = geometry["bounds"]["min"]
+    upper = geometry["bounds"]["max"]
+    extents = [upper[index] - lower[index] for index in range(3)]
+    axis_index = _axis_index(axis, extents)
+    thickness = extents[axis_index] * thickness_fraction
+    if minimum_thickness is not None:
+        if not math.isfinite(minimum_thickness) or minimum_thickness <= 0.0:
+            raise RecipeInputError("minimum_thickness must be positive and finite")
+        thickness = max(thickness, minimum_thickness)
+    thickness = min(thickness, extents[axis_index])
+    support_min = list(lower)
+    support_max = list(upper)
+    load_min = list(lower)
+    load_max = list(upper)
+    support_max[axis_index] = min(upper[axis_index], lower[axis_index] + thickness)
+    load_min[axis_index] = max(lower[axis_index], upper[axis_index] - thickness)
+    return {
+        "axis": ("x", "y", "z")[axis_index],
+        "thickness": float(thickness),
+        "support_box": {"min": support_min, "max": support_max},
+        "load_box": {"min": load_min, "max": load_max},
+        "geometry": geometry,
+        "warnings": (
+            "Suggested boxes are bounding-box slabs only; inspect and adjust them before engineering use.",
+        ),
+    }
+
+
 def _material(material_key: str, presets_root: str | Path) -> MaterialSpec:
     materials = load_material_presets(presets_root)
     try:
@@ -503,6 +667,69 @@ def _safety_factor(name: str, presets_root: str | Path) -> float:
         raise RecipeInputError(
             f"Unknown safety preset {name!r}. Choices: {', '.join(sorted(safety_presets))}"
         ) from exc
+
+
+def _default_material(recipe: str) -> str:
+    return {
+        "drone_landing_gear": "pa12_sls",
+        "drone_gimbal_mount": "pa12_sls",
+        "ring_wing_strut": "cf_pa",
+    }.get(recipe, "al_6061_t6")
+
+
+def _default_volume_fraction(recipe: str) -> float:
+    return {
+        "drone_landing_gear": 0.45,
+        "drone_gimbal_mount": 0.35,
+    }.get(recipe, 0.4)
+
+
+def _box_from_payload(payload: dict[str, Any], label: str) -> BoxSelector | None:
+    value = payload.get(label)
+    if value is None:
+        return None
+    try:
+        minimum = tuple(float(item) for item in value["min"])
+        maximum = tuple(float(item) for item in value["max"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RecipeInputError(f"{label} must have min and max arrays") from exc
+    return BoxSelector(minimum, maximum)
+
+
+def _vector_from_payload(
+    payload: dict[str, Any],
+    label: str,
+    *,
+    default: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    raw = payload.get(label, default)
+    try:
+        vector = tuple(float(item) for item in raw)
+    except (TypeError, ValueError) as exc:
+        raise RecipeInputError(f"{label} must be a numeric vector") from exc
+    return vector
+
+
+def _required_float_payload(payload: dict[str, Any], label: str) -> float:
+    if payload.get(label) is None:
+        raise RecipeInputError(f"{label} is required")
+    return float(payload[label])
+
+
+def _optional_float_payload(payload: dict[str, Any], label: str) -> float | None:
+    if payload.get(label) is None:
+        return None
+    return float(payload[label])
+
+
+def _axis_index(axis: str, extents: list[float]) -> int:
+    if axis == "longest":
+        return max(range(3), key=lambda index: extents[index])
+    mapping = {"x": 0, "y": 1, "z": 2}
+    try:
+        return mapping[axis.lower()]
+    except KeyError as exc:
+        raise RecipeInputError("axis must be one of 'longest', 'x', 'y', or 'z'") from exc
 
 
 def _validate_box(box: BoxSelector, label: str) -> None:

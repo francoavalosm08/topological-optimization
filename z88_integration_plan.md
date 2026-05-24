@@ -48,6 +48,14 @@ unverified format assumptions.
     `z88rTOSS.exe -SIG -SICCG`.
   - `z88_bridge/results.py` parses stress summaries for
     `Knotenspannungen/*.txt` and `Stresses_ELE/*.txt`.
+  - Stress postprocess crashes on copied GUI-generated `1_Balken_OC` with
+    Windows access violation return code `3221225477` after writing only a
+    partial energy file and an empty nodal file. The postprocess status now
+    reports this as `crashed`.
+  - Product behavior decision: automatic stress is supported only for
+    wrapper-generated OC/H8 projects. Other Z88 project types report
+    `unsupported` and should use Z88Arion GUI export or later independent
+    verification instead of running the unstable headless stress command.
 - Current native writer evidence:
   - `scripts/z88_generate_native_project.py` generates an OC/H8 voxel project
     from `Z88RunConfig` and STL input.
@@ -57,6 +65,24 @@ unverified format assumptions.
     and runtime files.
   - A local 45-element STL smoke completed optimizer replay, displacement
     generation, stress generation, and JSON collection.
+- Current TetGen/tetrahedral probe evidence:
+  - `scripts/z88_tetgen_probe.py` can run the installed `tetgen.exe` against a
+    working-copy mesh probe and record stdout/stderr plus `z88structure.txt`
+    metadata.
+  - Direct binary STL input failed locally with return code `3` and `Wrong
+    number of vertices in file`.
+  - Converting the same STL to OFF with `trimesh`, then running
+    `tetgen.exe -pl`, completed and wrote `z88structure.txt`.
+  - The observed header was `3 222 533 666 0 #AURORA_V2`, first node ID was
+    `0`, and the first observed element block used element type `17`.
+  - This confirms only a structure-file probe path. Tetrahedral native project
+    generation remains gated until material, load/support, optimizer, runtime,
+    and GUI intermediate files are confirmed.
+  - A later online-STL probe confirmed the simple Wikimedia cube can produce
+    `z88structure.txt` through OFF conversion, while direct STL still fails.
+  - The NIST Additive Manufacturing Test Artifact failed through both direct
+    STL and OFF conversion, so tetra generation is not reliable enough to
+    become the default raw-STL path.
 - Current backend workflow evidence:
   - `scripts/z88_run_generated_workflow.py` orchestrates the confirmed
     GUI-generated OC path: optimizer replay, displacement postprocess, and
@@ -80,15 +106,58 @@ unverified format assumptions.
     and explicit frame/camera boxes.
   - `scripts/z88_recipe.py ring_wing_strut` creates a lift-load strut config
     from lift force per strut and explicit root/wing boxes.
+  - `z88_bridge.configure_recipe_from_payload()` is the shared payload-to-config
+    path used by CLI/API/UI validation.
+  - `z88_bridge.inspect_stl_geometry()` reports bounded STL geometry metadata
+    for recipe preflight and UI region-box work.
+  - `scripts/z88_validate_recipe_samples.py` validates all five generated
+    sample recipes through config generation, STL inspection, and native OC/H8
+    project writing.
+  - Current local validation report:
+    `z88_assets/outputs/recipe_sample_validation.json`, `sample_count=5`,
+    `failed_count=0`.
   - A generated box STL recipe smoke produced a prepared run folder, and the
     backend correctly returned `guided_handoff_required`.
+  - `z88_bridge.suggest_end_boxes_from_stl()` creates support/load slab
+    suggestions at opposite bounding-box ends for simple structures. This is
+    an ergonomic helper only; users must inspect suggested boxes before
+    engineering use.
+- Current simple-structure online STL evidence:
+  - `scripts/z88_validate_online_stls.py` downloads trusted public test STLs
+    into ignored `z88_assets/online_stls/`, builds generic-bracket
+    configurations, writes native OC/H8 projects, and can run the confirmed
+    generated workflow.
+  - Current sources are Wikimedia Commons `Cube.stl` and the NIST Additive
+    Manufacturing Test Artifact STL.
+  - Current workflow report:
+    `z88_assets/outputs/online_stl_validation_workflow.json`, `source_count=2`,
+    `failed_count=0`.
+  - Both online STLs completed optimizer replay, displacement postprocess, and
+    generated OC/H8 stress postprocess. Workflow status remains `partial`
+    because optimized STL export and mesh QA are not yet part of the generated
+    workflow.
+- Current accuracy-gate evidence:
+  - `scripts/z88_accuracy_gate.py` validates known GUI OC compliance
+    references, generated online STL workflow results, and recorded TetGen
+    gate status.
+  - Current report: `z88_assets/outputs/accuracy_gate.json`, status `passed`.
+  - `1_Balken_OC` final compliance matches the stored reference
+    `2.21419985143696` within the 0.5% gate.
+  - `2_Querlenker_OC` final compliance matches the stored reference
+    `521.1895650750` within the 0.5% gate.
 - Current UI/API evidence:
   - The FastAPI app exposes Z88 material presets, safety presets, recipe
-    metadata, recipe configuration, run-folder preparation, explicit native
-    OC/H8 project generation, backend execution, and native result collection.
+    metadata, recipe configuration, recipe validation, STL inspection,
+    run-folder preparation, explicit native OC/H8 project generation, backend
+    execution, and native result collection.
   - The browser UI has a Z88 workflow panel for recipe payload editing,
-    run-folder preparation, native OC/H8 generation, optional stress
-    generation, and backend/guided handoff execution.
+    STL bounds inspection, region-box payload editing, run-folder preparation,
+    native OC/H8 generation, optional stress generation, and backend/guided
+    handoff execution.
+  - Step 7 implementation scope: the browser UI now includes a visual
+    bounding-box slab picker. It uses inspected STL bounds, axis/end/thickness
+    controls, and writes the chosen slab to the selected recipe box field. This
+    is intentionally not full triangle face picking.
 - Current packaging-readiness evidence:
   - Local crash-report helpers write traceback, JSON context, and selected
     copied files under `crash_reports/`.
@@ -122,6 +191,15 @@ unverified format assumptions.
     call patterns.
   - Seeded `z88rTOSS.exe -t -siccg` and `z88rTOSS.exe -c -siccg` reach the next
     missing project-file gate: `Z88MANAGE.TXT`.
+- Current TOSS/SKO gate evidence:
+  - `5_Winkelhalter_TOSS` probe evidence is preserved under
+    `z88_assets/outputs/headless_probe_toss_gate/probe_results.json`.
+  - TOSS has visible usage help once `Z88.DYN` is seeded, but candidate
+    `-t -siccg` and `-c -siccg` runs stop at missing `Z88MANAGE.TXT`.
+  - `7_Balken_SKO` probe evidence is preserved under
+    `z88_assets/outputs/headless_probe_sko_gate/probe_results.json`.
+  - SKO currently exits with Windows code `3221225781` without useful output,
+    so SKO headless execution is not proven.
 - Current converter probe evidence:
   - `z88ag2oi.exe` appears to be the Arion-to-optimizer-input converter.
   - It accepts language/console/SIMCASE-style args such as `2 1 384`.
@@ -510,6 +588,8 @@ Coding steps:
 9. Validate selected regions before run folder creation.
 10. Reject non-finite boxes, non-finite vectors, zero vectors, and non-positive
     masses/loads before they reach Z88.
+11. Current implemented scope: generated sample recipes are validated as a
+    batch by `scripts/z88_validate_recipe_samples.py`.
 
 Testing after coding:
 
@@ -535,6 +615,9 @@ Exit gate:
 - Current status: those recipe configs can now be fed into the explicit native
   OC/H8 generation path when the selected method is `oc` and the STL can be
   voxelized within the element limit.
+- Current status: all five generated sample recipes validate through config
+  generation, STL inspection, and native OC/H8 project writing with
+  `failed_count=0`.
 
 ## Phase H: UI Strategy
 
@@ -550,14 +633,17 @@ Coding steps:
    - `GET /z88/materials`
    - `GET /z88/safety_presets`
    - `GET /z88/recipes`
+   - `POST /z88/stl/inspect`
+   - `POST /z88/recipes/validate`
    - `POST /z88/recipes/configure`
    - `POST /z88/project/prepare`
    - `POST /z88/native/generate_project`
    - `POST /z88/backend/run`
    - `POST /z88/native/collect`
 3. Current implemented scope: browser Z88 workflow panel for editing recipe
-   payload JSON, preparing run folders, generating native OC/H8 projects,
-   toggling optional stress generation, and running the best-available backend.
+   payload JSON, inspecting STL bounds, validating payloads, preparing run
+   folders, generating native OC/H8 projects, toggling optional stress
+   generation, and running the best-available backend.
 4. Re-evaluate PySide6/PyVista only if browser UI cannot handle region picking
    or result visualization.
 5. UI must show logs, missing outputs, mesh QA, native result warnings, and
@@ -675,15 +761,32 @@ Current next pass:
 1. Test the browser/API native OC/H8 generation path on a real drone STL part
    and record the generated run output under `runs/` or `z88_assets/outputs/`.
 2. Run a clean Windows VM validation of `dist/Z88TopologyOptimizer.exe`.
-3. Test the browser/API native OC/H8 generation path on a generated sample and
-   record the generated run output under `runs/` or `z88_assets/outputs/`.
+3. Completed in tests: the API now generates sample STLs, configures the
+   `generic_bracket_box` recipe payload, and writes a native OC/H8 project from
+   that generated sample using the real writer path.
 4. Test the five explicit-box recipes on real parts and refine region input
    ergonomics.
-5. Add visual face/box picking only after the recipe payload shape is validated
-   on real geometry.
-6. Add guardrails for low volume fractions that can disconnect the generated
-   voxel model.
-7. Continue investigating stress generation on large GUI-generated OC fixtures;
-   keep it optional until it is reliable there.
-8. Run targeted tests.
-9. Run full suite.
+5. Completed for representative samples: all five generated recipes validate
+   through `scripts/z88_validate_recipe_samples.py`, including native OC/H8
+   project writing. Real user parts are still needed for engineering acceptance.
+6. Completed for current UI scope: add STL bounds inspection and payload
+   validation endpoints/UI controls so box coordinates can be checked before
+   any run folder or native project is written.
+7. Completed for current UI scope: add visual bounding-box slab picking after
+   recipe payload shape validation. Full triangle/face picking remains a later
+   UI decision if the browser helper is not enough.
+8. Completed: add generated OC/H8 writer guardrails for disconnected voxel
+   solids and volume fractions below the mandatory fixed/passive element
+   volume. The writer now fails before Z88 sees those unsafe inputs and records
+   `target_element_count`, `minimum_fixed_volume_fraction`, and
+   `solid_component_count` in `z88_native_project_write.json`.
+9. Product decision complete: automatic stress generation is limited to
+   wrapper-generated OC/H8 projects. Large GUI-generated OC fixtures remain
+   unsupported for automatic stress because the current probe on `1_Balken_OC`
+   returns Windows access violation `3221225477`; other project types should
+   use Z88Arion GUI export or later independent verification.
+10. Completed: add a TetGen probe script and run it against a representative
+   generated STL. OFF conversion can write `z88structure.txt`; direct STL input
+   fails; tetrahedral native generation remains gated instead of enabled.
+11. Run targeted tests.
+12. Run full suite.

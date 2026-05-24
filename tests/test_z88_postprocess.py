@@ -106,3 +106,26 @@ def test_classify_stress_postprocess_requires_success_and_outputs() -> None:
     )
 
     assert status == "completed"
+
+
+def test_classify_stress_postprocess_reports_windows_access_violation_as_crash() -> None:
+    status = classify_stress_postprocess_run(
+        returncode=0xC0000005,
+        timed_out=False,
+        stdout="",
+        nodal_output_exists=False,
+        element_output_exists=False,
+    )
+
+    assert status == "crashed"
+
+
+def test_classify_postprocess_keeps_observed_success_sentinel_completed() -> None:
+    status = classify_postprocess_run(
+        returncode=-12345,
+        timed_out=False,
+        stdout=">>> Z88R >>> Programm erfolgreich gelaufen!",
+        output_exists=True,
+    )
+
+    assert status == "completed"

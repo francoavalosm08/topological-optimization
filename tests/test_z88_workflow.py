@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import z88_bridge.workflow as workflow
@@ -74,6 +75,17 @@ def _native(status: str = "collected") -> NativeResultSummary:
     )
 
 
+def _mark_supported_stress_project(path: Path) -> None:
+    (path / "z88_native_project_write.json").write_text(
+        json.dumps({"node_count": 8, "element_count": 1, "boundary_condition_count": 3}),
+        encoding="utf-8",
+    )
+    (path / "config.json").write_text(
+        json.dumps({"optimizer": {"method": "oc"}}),
+        encoding="utf-8",
+    )
+
+
 def test_generated_oc_workflow_runs_optimizer_displacement_and_collection(
     tmp_path: Path,
     monkeypatch,
@@ -111,6 +123,7 @@ def test_generated_oc_workflow_can_run_stress_after_displacement(
     monkeypatch,
 ) -> None:
     calls: list[str] = []
+    _mark_supported_stress_project(tmp_path)
 
     monkeypatch.setattr(workflow, "run_generated_optimizer_project", lambda *args, **kwargs: _optimizer())
     monkeypatch.setattr(workflow, "run_displacement_postprocess", lambda *args, **kwargs: _displacement())
@@ -127,6 +140,31 @@ def test_generated_oc_workflow_can_run_stress_after_displacement(
     assert calls == ["stress"]
     assert result.stress is not None
     assert result.compact_dict()["stress_status"] == "completed"
+
+
+def test_generated_oc_workflow_marks_stress_unsupported_outside_wrapper_h8_scope(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    calls: list[str] = []
+
+    monkeypatch.setattr(workflow, "run_generated_optimizer_project", lambda *args, **kwargs: _optimizer())
+    monkeypatch.setattr(workflow, "run_displacement_postprocess", lambda *args, **kwargs: _displacement())
+
+    def fake_stress(*args, **kwargs):
+        calls.append("stress")
+        return _stress()
+
+    monkeypatch.setattr(workflow, "run_stress_postprocess", fake_stress)
+    monkeypatch.setattr(workflow, "collect_native_results", lambda *args, **kwargs: _native())
+
+    result = run_generated_oc_workflow(tmp_path, generate_stress=True)
+
+    assert calls == []
+    assert result.status == "partial"
+    assert result.stress is not None
+    assert result.compact_dict()["stress_status"] == "unsupported"
+    assert "automatic stress is confirmed only" in result.messages[0]
 
 
 def test_generated_oc_workflow_skips_displacement_after_optimizer_failure(

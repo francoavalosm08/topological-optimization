@@ -46,6 +46,9 @@ class NativeOCProjectWriteResult:
     element_count: int
     boundary_condition_count: int
     fixed_element_count: int
+    target_element_count: int
+    minimum_fixed_volume_fraction: float
+    solid_component_count: int
     material_modulus: float
     poisson_ratio: float
     units: str
@@ -103,6 +106,12 @@ def write_native_oc_project_from_grid(
         raise ValueError("voxel grid pitch must be positive")
     if not np.any(grid.solid):
         raise ValueError("voxel grid contains no solid elements")
+    solid_component_count = _solid_component_count(grid.solid)
+    if solid_component_count != 1:
+        raise ValueError(
+            f"voxel grid contains {solid_component_count} disconnected solid components; "
+            "repair the STL, increase voxel_pitch, or split the run into one connected part"
+        )
     if not config.supports:
         raise ValueError("at least one support is required for native project generation")
     if not config.loads:
@@ -116,6 +125,11 @@ def write_native_oc_project_from_grid(
     node_ids_by_region = _collect_node_region_maps(config.supports, config.loads, mesh.nodes)
     boundary_rows = _build_boundary_rows(config.supports, config.loads, node_ids_by_region)
     fixed_element_ids = _fixed_element_ids(config, mesh)
+    target_element_count, minimum_fixed_volume_fraction = _validate_volume_feasibility(
+        config,
+        len(mesh.elements),
+        len(fixed_element_ids),
+    )
     material_modulus = _young_modulus_for_units(config)
 
     _write_project_files(
@@ -143,6 +157,9 @@ def write_native_oc_project_from_grid(
         element_count=len(mesh.elements),
         boundary_condition_count=len(boundary_rows),
         fixed_element_count=len(fixed_element_ids),
+        target_element_count=target_element_count,
+        minimum_fixed_volume_fraction=minimum_fixed_volume_fraction,
+        solid_component_count=solid_component_count,
         material_modulus=material_modulus,
         poisson_ratio=config.material.poisson_ratio,
         units=config.units,
@@ -614,6 +631,46 @@ def _fixed_element_ids(config: Z88RunConfig, mesh: NativeMesh) -> set[int]:
     return fixed
 
 
+def _solid_component_count(solid: np.ndarray) -> int:
+    occupied = {tuple(int(value) for value in index) for index in np.argwhere(solid)}
+    components = 0
+    while occupied:
+        components += 1
+        stack = [occupied.pop()]
+        while stack:
+            ix, iy, iz = stack.pop()
+            for neighbor in (
+                (ix - 1, iy, iz),
+                (ix + 1, iy, iz),
+                (ix, iy - 1, iz),
+                (ix, iy + 1, iz),
+                (ix, iy, iz - 1),
+                (ix, iy, iz + 1),
+            ):
+                if neighbor in occupied:
+                    occupied.remove(neighbor)
+                    stack.append(neighbor)
+    return components
+
+
+def _validate_volume_feasibility(
+    config: Z88RunConfig,
+    element_count: int,
+    fixed_element_count: int,
+) -> tuple[int, float]:
+    target_element_count = int(np.ceil(config.optimizer.volume_fraction * element_count))
+    minimum_fixed_volume_fraction = fixed_element_count / element_count
+    if fixed_element_count > target_element_count:
+        raise ValueError(
+            "optimizer.volume_fraction is below the mandatory fixed/passive volume: "
+            f"target keeps about {target_element_count}/{element_count} elements, "
+            f"but supports/loads/passive-solid regions require {fixed_element_count}. "
+            f"Use volume_fraction >= {minimum_fixed_volume_fraction:.6f}, reduce passive regions, "
+            "or increase voxel_pitch."
+        )
+    return target_element_count, minimum_fixed_volume_fraction
+
+
 def _node_ids_in_region(
     nodes: tuple[tuple[int, float, float, float], ...],
     region: RegionSpec,
@@ -653,6 +710,12 @@ def _project_warnings(config: Z88RunConfig, fixed_element_ids: set[int]) -> list
         warnings.append("no fixed/passive elements were generated; low volume fractions can disconnect load/support regions")
     if config.optimizer.volume_fraction < 0.2:
         warnings.append("very low volume fractions can produce singular Z88 solves without more passive-solid regions")
+    fixed_count = len(fixed_element_ids)
+    if fixed_count:
+        warnings.append(
+            "supports, loads, and passive-solid regions are written as fixed topology elements; "
+            "keep volume_fraction above the reported minimum_fixed_volume_fraction"
+        )
     return warnings
 
 

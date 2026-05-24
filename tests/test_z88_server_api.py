@@ -16,14 +16,24 @@ def _box_stl(path: Path) -> Path:
     return path
 
 
+def _fake_install(root: Path) -> Path:
+    bin_dir = root / "win" / "bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "Z88Arion.exe").write_text("", encoding="utf-8")
+    return root
+
+
 def test_z88_preset_endpoints_return_serializable_payloads() -> None:
     materials = api.z88_materials()
     safety = api.z88_safety_presets()
     recipes = api.z88_recipes()
+    capabilities = api.z88_capabilities()
 
     assert materials["al_6061_t6"]["young_modulus"] > 0
     assert safety["consumer_drone"] == 1.5
     assert "drone_landing_gear" in recipes
+    assert capabilities["capabilities"]["oc_h8_generated"]["status"] == "confirmed"
+    assert capabilities["capabilities"]["toss_native_generation"]["status"] == "guided_only"
 
 
 def test_z88_discovery_endpoint_reports_missing_install(tmp_path: Path) -> None:
@@ -39,6 +49,90 @@ def test_z88_generate_samples_endpoint_writes_catalog(tmp_path: Path) -> None:
     assert response["status"] == "generated"
     assert response["sample_count"] == 5
     assert Path(response["catalog_json"]).is_file()
+
+
+def test_z88_stl_inspect_endpoint_reports_geometry(tmp_path: Path) -> None:
+    stl = _box_stl(tmp_path / "box.stl")
+
+    response = api.z88_inspect_stl(api.Z88StlInspectRequest(stl_path=str(stl)))
+
+    assert response["status"] == "inspected"
+    assert response["geometry"]["bounds"]["min"] == [-5.0, -2.0, -1.0]
+    assert response["geometry"]["watertight"] is True
+
+
+def test_z88_suggest_end_boxes_endpoint_returns_payload_boxes(tmp_path: Path) -> None:
+    stl = _box_stl(tmp_path / "box.stl")
+
+    response = api.z88_suggest_end_boxes(api.Z88SuggestBoxesRequest(stl_path=str(stl)))
+
+    assert response["status"] == "suggested"
+    assert response["axis"] == "x"
+    assert response["support_box"]["max"][0] == -4.0
+    assert response["load_box"]["min"][0] == 4.0
+
+
+def test_z88_recipe_validate_endpoint_returns_config_and_geometry(tmp_path: Path) -> None:
+    stl = _box_stl(tmp_path / "box.stl")
+
+    response = api.z88_validate_recipe(
+        api.Z88RecipeConfigureRequest(
+            recipe="generic_bracket",
+            stl_path=str(stl),
+            support_box=api.Z88BoxRequest(min=(-5.0, -2.0, -1.0), max=(-4.0, 2.0, 1.0)),
+            load_box=api.Z88BoxRequest(min=(4.0, -2.0, -1.0), max=(5.0, 2.0, 1.0)),
+            force=(0.0, -250.0, 0.0),
+        )
+    )
+
+    assert response["status"] == "valid"
+    assert response["config"]["project_name"] == "generic_bracket"
+    assert response["geometry"]["faces"] > 0
+
+
+def test_z88_native_generate_endpoint_accepts_generated_sample_config(tmp_path: Path) -> None:
+    install = _fake_install(tmp_path / "Z88ArionV3")
+    samples = api.z88_generate_samples(api.Z88SampleGenerateRequest(output_dir=str(tmp_path / "samples")))
+    sample = next(item for item in samples["samples"] if item["name"] == "generic_bracket_box")
+
+    configured = api.z88_configure_recipe(api.Z88RecipeConfigureRequest(**sample["payload"]))
+    project = tmp_path / "native_sample_project"
+    generated = api.z88_generate_native_project(
+        api.Z88NativeProjectGenerateRequest(
+            config=configured["config"],
+            project_dir=str(project),
+            install_root=str(install),
+            max_elements=1_000,
+        )
+    )
+
+    assert generated["status"] == "generated"
+    assert generated["write"]["solid_component_count"] == 1
+    assert generated["write"]["target_element_count"] >= generated["write"]["fixed_element_count"]
+    assert (project / "z88i1.txt").is_file()
+    assert (project / "z88_native_project_write.json").is_file()
+
+
+def test_z88_native_generate_endpoint_accepts_all_representative_drone_samples(tmp_path: Path) -> None:
+    install = _fake_install(tmp_path / "Z88ArionV3")
+    samples = api.z88_generate_samples(api.Z88SampleGenerateRequest(output_dir=str(tmp_path / "samples")))
+
+    for sample in samples["samples"]:
+        configured = api.z88_configure_recipe(api.Z88RecipeConfigureRequest(**sample["payload"]))
+        project = tmp_path / "native_projects" / sample["name"]
+        generated = api.z88_generate_native_project(
+            api.Z88NativeProjectGenerateRequest(
+                config=configured["config"],
+                project_dir=str(project),
+                install_root=str(install),
+                max_elements=20_000,
+            )
+        )
+
+        assert generated["status"] == "generated", sample["name"]
+        assert generated["write"]["solid_component_count"] == 1, sample["name"]
+        assert generated["write"]["element_count"] > 0, sample["name"]
+        assert generated["write"]["target_element_count"] >= generated["write"]["fixed_element_count"], sample["name"]
 
 
 def test_z88_configure_recipe_endpoint_returns_config_only(tmp_path: Path) -> None:
@@ -157,6 +251,9 @@ def test_z88_native_generate_endpoint_writes_project_and_runs_optional_workflow(
             element_count=1,
             boundary_condition_count=7,
             fixed_element_count=1,
+            target_element_count=1,
+            minimum_fixed_volume_fraction=1.0,
+            solid_component_count=1,
             material_modulus=68_900.0,
             poisson_ratio=0.33,
             units=run_config.units,

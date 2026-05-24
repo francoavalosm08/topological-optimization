@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import trimesh
 
 
@@ -136,7 +137,7 @@ def generate_sample_assets(output_dir: str | Path) -> dict[str, Any]:
     catalog: list[dict[str, Any]] = []
     for sample in SAMPLE_ASSETS:
         stl_path = output_dir / sample.filename
-        mesh = trimesh.creation.box(extents=sample.extents)
+        mesh = _sample_mesh(sample)
         mesh.export(stl_path)
         item = sample.to_dict()
         item["stl_path"] = str(stl_path.resolve())
@@ -152,3 +153,124 @@ def generate_sample_assets(output_dir: str | Path) -> dict[str, Any]:
         "sample_count": len(catalog),
         "samples": catalog,
     }
+
+
+def _sample_mesh(sample: SampleAsset) -> trimesh.Trimesh:
+    if sample.name == "generic_bracket_box":
+        return _combine_boxes(
+            [
+                ((10.0, 4.0, 2.0), (0.0, 0.0, 0.0)),
+                ((3.0, 4.0, 8.0), (-3.5, 0.0, 3.0)),
+            ]
+        )
+    if sample.name == "drone_motor_mount_box":
+        return _combine_boxes(
+            [
+                ((20.0, 6.0, 3.0), (0.0, 0.0, 0.0)),
+                ((6.0, 20.0, 3.0), (0.0, 0.0, 0.0)),
+                ((10.0, 10.0, 4.0), (0.0, 0.0, 0.0)),
+            ]
+        )
+    if sample.name == "drone_landing_gear_box":
+        return _combine_boxes(
+            [
+                ((24.0, 3.0, 3.0), (0.0, 0.0, 1.0)),
+                ((4.0, 5.0, 6.0), (-10.0, 0.0, -1.0)),
+                ((4.0, 5.0, 6.0), (10.0, 0.0, -1.0)),
+            ]
+        )
+    if sample.name == "drone_gimbal_mount_box":
+        return _combine_boxes(
+            [
+                ((16.0, 4.0, 3.0), (0.0, 0.0, 0.0)),
+                ((4.0, 10.0, 3.0), (0.0, 0.0, 0.0)),
+                ((6.0, 6.0, 4.0), (4.0, 0.0, 0.0)),
+            ]
+        )
+    if sample.name == "ring_wing_strut_box":
+        return _combine_boxes(
+            [
+                ((30.0, 2.0, 2.0), (0.0, 0.0, 0.0)),
+                ((5.0, 3.0, 3.0), (-12.5, 0.0, 0.0)),
+                ((5.0, 3.0, 3.0), (12.5, 0.0, 0.0)),
+            ]
+        )
+    return trimesh.creation.box(extents=sample.extents)
+
+
+def _combine_boxes(parts: list[tuple[tuple[float, float, float], tuple[float, float, float]]]) -> trimesh.Trimesh:
+    solid, origin, pitch = _voxel_box_union(parts)
+    mesh = _surface_mesh_from_voxels(solid, origin=origin, pitch=pitch)
+    if not mesh.is_watertight:
+        raise ValueError("generated sample mesh is not watertight")
+    return mesh
+
+
+def _voxel_box_union(
+    parts: list[tuple[tuple[float, float, float], tuple[float, float, float]]],
+    *,
+    pitch: float = 1.0,
+) -> tuple[np.ndarray, np.ndarray, float]:
+    lowers = []
+    uppers = []
+    for extents, translation in parts:
+        ext = np.asarray(extents, dtype=float)
+        center = np.asarray(translation, dtype=float)
+        lowers.append(center - ext / 2.0)
+        uppers.append(center + ext / 2.0)
+    lower = np.floor(np.min(np.vstack(lowers), axis=0) / pitch) * pitch
+    upper = np.ceil(np.max(np.vstack(uppers), axis=0) / pitch) * pitch
+    dims = np.maximum(1, np.ceil((upper - lower) / pitch).astype(int))
+    solid = np.zeros(tuple(int(value) for value in dims), dtype=bool)
+
+    xs = lower[0] + (np.arange(dims[0]) + 0.5) * pitch
+    ys = lower[1] + (np.arange(dims[1]) + 0.5) * pitch
+    zs = lower[2] + (np.arange(dims[2]) + 0.5) * pitch
+    xgrid, ygrid, zgrid = np.meshgrid(xs, ys, zs, indexing="ij")
+    for extents, translation in parts:
+        ext = np.asarray(extents, dtype=float)
+        center = np.asarray(translation, dtype=float)
+        lo = center - ext / 2.0
+        hi = center + ext / 2.0
+        solid |= (
+            (lo[0] <= xgrid) & (xgrid <= hi[0])
+            & (lo[1] <= ygrid) & (ygrid <= hi[1])
+            & (lo[2] <= zgrid) & (zgrid <= hi[2])
+        )
+    return solid, lower.astype(float), pitch
+
+
+def _surface_mesh_from_voxels(solid: np.ndarray, *, origin: np.ndarray, pitch: float) -> trimesh.Trimesh:
+    vertices: list[tuple[float, float, float]] = []
+    faces: list[tuple[int, int, int]] = []
+    vertex_ids: dict[tuple[int, int, int], int] = {}
+
+    def vertex_id(corner: tuple[int, int, int]) -> int:
+        if corner not in vertex_ids:
+            vertex_ids[corner] = len(vertices)
+            vertices.append(tuple((origin + np.asarray(corner, dtype=float) * pitch).tolist()))
+        return vertex_ids[corner]
+
+    face_defs = (
+        ((-1, 0, 0), ((0, 0, 0), (0, 0, 1), (0, 1, 1), (0, 1, 0))),
+        ((1, 0, 0), ((1, 0, 0), (1, 1, 0), (1, 1, 1), (1, 0, 1))),
+        ((0, -1, 0), ((0, 0, 0), (1, 0, 0), (1, 0, 1), (0, 0, 1))),
+        ((0, 1, 0), ((0, 1, 0), (0, 1, 1), (1, 1, 1), (1, 1, 0))),
+        ((0, 0, -1), ((0, 0, 0), (0, 1, 0), (1, 1, 0), (1, 0, 0))),
+        ((0, 0, 1), ((0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1))),
+    )
+    shape = solid.shape
+    for ix, iy, iz in np.argwhere(solid):
+        ix = int(ix)
+        iy = int(iy)
+        iz = int(iz)
+        for normal, corners in face_defs:
+            nx, ny, nz = ix + normal[0], iy + normal[1], iz + normal[2]
+            if 0 <= nx < shape[0] and 0 <= ny < shape[1] and 0 <= nz < shape[2] and solid[nx, ny, nz]:
+                continue
+            ids = [vertex_id((ix + cx, iy + cy, iz + cz)) for cx, cy, cz in corners]
+            faces.append((ids[0], ids[1], ids[2]))
+            faces.append((ids[0], ids[2], ids[3]))
+    mesh = trimesh.Trimesh(vertices=np.asarray(vertices), faces=np.asarray(faces), process=True)
+    mesh.fix_normals()
+    return mesh

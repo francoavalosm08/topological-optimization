@@ -20,6 +20,12 @@ def main() -> int:
     parser.add_argument("--solver", default="siccg", help="Solver mode. Default: siccg")
     parser.add_argument("--optimizer-timeout", type=float, default=900.0)
     parser.add_argument("--displacement-timeout", type=float, default=300.0)
+    parser.add_argument("--stress-timeout", type=float, default=300.0)
+    parser.add_argument(
+        "--generate-stress",
+        action="store_true",
+        help="Generate stress output when the project is a wrapper-generated OC/H8 project",
+    )
     parser.add_argument("--skip-optimizer", action="store_true")
     parser.add_argument("--skip-displacements", action="store_true")
     parser.add_argument("--verbose", action="store_true", help="Print full backend JSON")
@@ -32,8 +38,10 @@ def main() -> int:
             solver=args.solver,
             optimizer_timeout_s=args.optimizer_timeout,
             displacement_timeout_s=args.displacement_timeout,
+            stress_timeout_s=args.stress_timeout,
             run_optimizer=not args.skip_optimizer,
             generate_displacements=not args.skip_displacements,
+            generate_stress=args.generate_stress,
         )
     except Exception as exc:
         project_dir = Path(args.project_dir).resolve()

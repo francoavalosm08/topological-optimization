@@ -102,6 +102,53 @@
             border-radius: 6px;
             white-space: pre-wrap;
         }
+        .z88-box-helper {
+            margin-top: 12px;
+            padding: 12px;
+            background: #1d1d1d;
+            border: 1px solid #3a3a3a;
+            border-radius: 8px;
+        }
+        .z88-box-helper h3 {
+            margin: 0 0 8px;
+            font-size: 17px;
+        }
+        .z88-visual-picker {
+            margin-top: 12px;
+            padding: 12px;
+            background: #191919;
+            border: 1px solid #333;
+            border-radius: 8px;
+        }
+        .z88-visual-picker p {
+            color: #bbb;
+            margin: 6px 0 10px;
+        }
+        #z88BoxPreview {
+            width: 100%;
+            min-height: 160px;
+            background: #111;
+            border: 1px solid #3b3b3b;
+            border-radius: 6px;
+        }
+        #z88BoxPreview text {
+            fill: #d8d8d8;
+            font-family: Consolas, 'Courier New', monospace;
+            font-size: 12px;
+        }
+        #z88BoxPreview .extent {
+            fill: #2d4359;
+            stroke: #5fa8d3;
+            stroke-width: 1;
+        }
+        #z88BoxPreview .selection {
+            fill: #f4a261;
+            opacity: 0.9;
+        }
+        #z88BoxPreview .axis-label {
+            fill: #9fd3ff;
+            font-weight: 700;
+        }
     </style>
 </head>
 <body>
@@ -169,6 +216,65 @@
         <label style="margin-top:12px;">Recipe payload
             <textarea id="z88Payload"></textarea>
         </label>
+        <div class="z88-box-helper">
+            <h3>Region Box Helper</h3>
+            <div class="z88-grid">
+                <label>Payload box field
+                    <select id="z88BoxField" onchange="loadZ88BoxFromPayload()">
+                        <option value="support_box">support_box</option>
+                        <option value="load_box">load_box</option>
+                        <option value="frame_support_box">frame_support_box</option>
+                        <option value="motor_mount_box">motor_mount_box</option>
+                        <option value="ground_contact_box">ground_contact_box</option>
+                        <option value="camera_mount_box">camera_mount_box</option>
+                        <option value="root_support_box">root_support_box</option>
+                        <option value="wing_load_box">wing_load_box</option>
+                    </select>
+                </label>
+                <label>Min X,Y,Z
+                    <input id="z88BoxMin" placeholder="-5,-2,-1" oninput="renderZ88BoxPreview()" />
+                </label>
+                <label>Max X,Y,Z
+                    <input id="z88BoxMax" placeholder="-4,2,1" oninput="renderZ88BoxPreview()" />
+                </label>
+            </div>
+            <div class="z88-visual-picker">
+                <h3>Visual Box Picker</h3>
+                <p>Inspect STL bounds first, then pick a bounding-box slab. This is a safe visual helper for simple structures, not full triangle face picking.</p>
+                <div class="z88-grid">
+                    <label>Axis
+                        <select id="z88VisualAxis" onchange="renderZ88BoxPreview()">
+                            <option value="x">X</option>
+                            <option value="y">Y</option>
+                            <option value="z">Z</option>
+                            <option value="longest">Longest</option>
+                        </select>
+                    </label>
+                    <label>Side
+                        <select id="z88VisualSide" onchange="renderZ88BoxPreview()">
+                            <option value="min">Minimum end</option>
+                            <option value="max">Maximum end</option>
+                        </select>
+                    </label>
+                    <label>Thickness fraction
+                        <input id="z88VisualThickness" type="number" min="0.01" max="0.5" step="0.01" value="0.1" oninput="renderZ88BoxPreview()" />
+                    </label>
+                </div>
+                <svg id="z88BoxPreview" viewBox="0 0 520 170" role="img" aria-label="Z88 box picker preview"></svg>
+                <div class="controls">
+                    <button type="button" onclick="applyZ88VisualSlab()">Apply Visual Slab To Selected Field</button>
+                    <button type="button" onclick="renderZ88BoxPreview()">Refresh Preview</button>
+                </div>
+            </div>
+            <div class="controls">
+                <button type="button" onclick="loadZ88BoxFromPayload()">Load Box From Payload</button>
+                <button type="button" onclick="applyZ88BoxToPayload()">Apply Box To Payload</button>
+                <button type="button" onclick="inspectZ88Stl()">Inspect STL Bounds</button>
+                <button type="button" onclick="loadZ88BoundsIntoBoxFields()">Load Bounds Into Box Fields</button>
+                <button type="button" onclick="suggestZ88EndBoxes()">Suggest End Boxes</button>
+                <button type="button" onclick="validateZ88PayloadOnly()">Validate Payload</button>
+            </div>
+        </div>
         <div class="z88-options">
             <label>
                 <input id="z88RunWorkflow" type="checkbox" checked />
@@ -176,7 +282,7 @@
             </label>
             <label>
                 <input id="z88GenerateStress" type="checkbox" />
-                Generate stress output
+                Generate stress output (generated OC/H8 only)
             </label>
         </div>
         <div class="controls">
@@ -201,6 +307,8 @@
         const ctx = canvas2d.getContext('2d');
         const canvas3d = document.getElementById('canvas3d');
         const statsEl = document.getElementById('stats');
+        const API_ORIGIN = window.location.origin;
+        const WS_URL = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
         
         // Three.js setup
         const scene = new THREE.Scene();
@@ -336,7 +444,7 @@
             });
         }
         
-        let ws = new WebSocket("ws://127.0.0.1:8000/ws");
+        let ws = new WebSocket(WS_URL);
         
         ws.onmessage = async function(event) {
             const data = JSON.parse(event.data);
@@ -401,12 +509,12 @@
         };
 
         ws.onerror = function() {
-            statsEl.innerText = "Cannot reach server. Start it: python -m uvicorn server.app:app --host 127.0.0.1 --port 8000";
+            statsEl.innerText = "Cannot reach server. Start it with scripts/start_server.ps1 or python -m uvicorn server.app:app.";
         };
 
         ws.onclose = function() {
             if (statsEl.innerText.indexOf("Cannot reach") === -1) {
-                statsEl.innerText = "WebSocket disconnected. Start server on http://127.0.0.1:8000";
+                statsEl.innerText = "WebSocket disconnected. Reload after starting the topology server.";
             }
         };
 
@@ -469,6 +577,282 @@
                 typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
         }
 
+        function parseZ88Vector(text, label) {
+            const values = text.split(",").map(v => Number(v.trim()));
+            if (values.length !== 3 || values.some(v => !Number.isFinite(v))) {
+                throw new Error(`${label} must be three comma-separated numbers`);
+            }
+            return values;
+        }
+
+        function formatZ88Vector(values) {
+            return values.map(v => Number(v).toPrecision(8)).join(",");
+        }
+
+        function readZ88PayloadJson() {
+            return JSON.parse(document.getElementById("z88Payload").value);
+        }
+
+        function writeZ88PayloadJson(payload) {
+            document.getElementById("z88Payload").value = JSON.stringify(payload, null, 2);
+        }
+
+        let z88LastInspection = null;
+        const z88BoxFieldNames = [
+            "support_box",
+            "load_box",
+            "frame_support_box",
+            "motor_mount_box",
+            "ground_contact_box",
+            "camera_mount_box",
+            "root_support_box",
+            "wing_load_box"
+        ];
+
+        function selectFirstAvailableZ88BoxField(payload) {
+            const select = document.getElementById("z88BoxField");
+            if (payload[select.value] && Array.isArray(payload[select.value].min)) {
+                return select.value;
+            }
+            const field = z88BoxFieldNames.find(name => payload[name] && Array.isArray(payload[name].min));
+            if (field) select.value = field;
+            return field;
+        }
+
+        function syncZ88BoxFieldsFromPayload(announce = true) {
+            const payload = readZ88PayloadJson();
+            const field = selectFirstAvailableZ88BoxField(payload);
+            if (!field) {
+                throw new Error("payload has no supported box field");
+            }
+            const box = payload[field];
+            if (!box || !Array.isArray(box.min) || !Array.isArray(box.max)) {
+                throw new Error(`payload has no box field named ${field}`);
+            }
+            document.getElementById("z88BoxMin").value = box.min.join(",");
+            document.getElementById("z88BoxMax").value = box.max.join(",");
+            renderZ88BoxPreview();
+            if (announce) z88Output({ status: "box_loaded", field, box });
+            return { field, box };
+        }
+
+        function loadZ88BoxFromPayload() {
+            try {
+                syncZ88BoxFieldsFromPayload(true);
+            } catch (err) {
+                z88Output("Box load failed: " + err);
+            }
+        }
+
+        function applyZ88BoxToPayload() {
+            try {
+                const payload = readZ88PayloadJson();
+                const field = document.getElementById("z88BoxField").value;
+                payload[field] = {
+                    min: parseZ88Vector(document.getElementById("z88BoxMin").value, "box min"),
+                    max: parseZ88Vector(document.getElementById("z88BoxMax").value, "box max")
+                };
+                writeZ88PayloadJson(payload);
+                renderZ88BoxPreview();
+                z88Output({ status: "box_applied", field, box: payload[field] });
+            } catch (err) {
+                z88Output("Box apply failed: " + err);
+            }
+        }
+
+        async function validateZ88PayloadOnly() {
+            try {
+                const payload = readZ88RecipePayload(false);
+                const res = await fetch("/z88/recipes/validate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || res.statusText);
+                z88Output(data);
+            } catch (err) {
+                z88Output("Z88 payload validation failed: " + err);
+            }
+        }
+
+        async function inspectZ88Stl() {
+            try {
+                const payload = readZ88RecipePayload(false);
+                const res = await fetch("/z88/stl/inspect", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ stl_path: payload.stl_path })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || res.statusText);
+                z88LastInspection = data.geometry;
+                renderZ88BoxPreview();
+                z88Output(data);
+            } catch (err) {
+                z88Output("Z88 STL inspection failed: " + err);
+            }
+        }
+
+        function loadZ88BoundsIntoBoxFields() {
+            try {
+                if (!z88LastInspection || !z88LastInspection.bounds) {
+                    throw new Error("inspect STL bounds first");
+                }
+                document.getElementById("z88BoxMin").value = z88LastInspection.bounds.min.join(",");
+                document.getElementById("z88BoxMax").value = z88LastInspection.bounds.max.join(",");
+                renderZ88BoxPreview();
+                z88Output({ status: "bounds_loaded_into_box_fields", bounds: z88LastInspection.bounds });
+            } catch (err) {
+                z88Output("Z88 bounds load failed: " + err);
+            }
+        }
+
+        async function suggestZ88EndBoxes() {
+            try {
+                const payload = readZ88RecipePayload(false);
+                const res = await fetch("/z88/stl/suggest_end_boxes", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        stl_path: payload.stl_path,
+                        axis: "longest",
+                        thickness_fraction: 0.1
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || res.statusText);
+                payload.support_box = data.support_box;
+                payload.load_box = data.load_box;
+                if (payload.frame_support_box !== undefined) payload.frame_support_box = data.support_box;
+                if (payload.motor_mount_box !== undefined) payload.motor_mount_box = data.load_box;
+                if (payload.ground_contact_box !== undefined) payload.ground_contact_box = data.load_box;
+                if (payload.camera_mount_box !== undefined) payload.camera_mount_box = data.load_box;
+                if (payload.root_support_box !== undefined) payload.root_support_box = data.support_box;
+                if (payload.wing_load_box !== undefined) payload.wing_load_box = data.load_box;
+                writeZ88PayloadJson(payload);
+                z88LastInspection = data.geometry;
+                renderZ88BoxPreview();
+                z88Output(data);
+            } catch (err) {
+                z88Output("Z88 box suggestion failed: " + err);
+            }
+        }
+
+        function z88AxisIndex(axis, bounds) {
+            if (axis === "x") return 0;
+            if (axis === "y") return 1;
+            if (axis === "z") return 2;
+            if (axis === "longest") {
+                const extents = bounds.max.map((v, i) => v - bounds.min[i]);
+                return extents.indexOf(Math.max(...extents));
+            }
+            throw new Error(`unsupported axis ${axis}`);
+        }
+
+        function z88CurrentBoxOrNull() {
+            try {
+                return {
+                    min: parseZ88Vector(document.getElementById("z88BoxMin").value, "box min"),
+                    max: parseZ88Vector(document.getElementById("z88BoxMax").value, "box max")
+                };
+            } catch (_err) {
+                return null;
+            }
+        }
+
+        function z88BoxFromVisualSlab(bounds) {
+            const axis = document.getElementById("z88VisualAxis").value;
+            const side = document.getElementById("z88VisualSide").value;
+            const fraction = Number(document.getElementById("z88VisualThickness").value);
+            if (!Number.isFinite(fraction) || fraction <= 0 || fraction > 0.5) {
+                throw new Error("thickness fraction must be > 0 and <= 0.5");
+            }
+            const axisIdx = z88AxisIndex(axis, bounds);
+            const min = bounds.min.slice();
+            const max = bounds.max.slice();
+            const extent = bounds.max[axisIdx] - bounds.min[axisIdx];
+            if (!(extent > 0)) {
+                throw new Error("selected axis has zero extent");
+            }
+            const thickness = extent * fraction;
+            if (side === "min") {
+                max[axisIdx] = bounds.min[axisIdx] + thickness;
+            } else {
+                min[axisIdx] = bounds.max[axisIdx] - thickness;
+            }
+            return { min, max, axis: ["x", "y", "z"][axisIdx], side, thickness };
+        }
+
+        function applyZ88VisualSlab() {
+            try {
+                if (!z88LastInspection || !z88LastInspection.bounds) {
+                    throw new Error("inspect STL bounds first");
+                }
+                const slab = z88BoxFromVisualSlab(z88LastInspection.bounds);
+                document.getElementById("z88BoxMin").value = formatZ88Vector(slab.min);
+                document.getElementById("z88BoxMax").value = formatZ88Vector(slab.max);
+                applyZ88BoxToPayload();
+                z88Output({
+                    status: "visual_slab_applied",
+                    field: document.getElementById("z88BoxField").value,
+                    axis: slab.axis,
+                    side: slab.side,
+                    thickness: slab.thickness,
+                    box: { min: slab.min, max: slab.max }
+                });
+            } catch (err) {
+                z88Output("Visual slab apply failed: " + err);
+            }
+        }
+
+        function renderZ88BoxPreview() {
+            const svg = document.getElementById("z88BoxPreview");
+            if (!svg) return;
+            if (!z88LastInspection || !z88LastInspection.bounds) {
+                svg.innerHTML = '<text x="18" y="82">Inspect STL bounds to enable visual box picking.</text>';
+                return;
+            }
+            const bounds = z88LastInspection.bounds;
+            const current = z88CurrentBoxOrNull();
+            const labels = ["X", "Y", "Z"];
+            const axisIdx = z88AxisIndex(document.getElementById("z88VisualAxis").value, bounds);
+            const rows = labels.map((label, i) => {
+                const y = 35 + i * 43;
+                const min = bounds.min[i];
+                const max = bounds.max[i];
+                const extent = max - min || 1;
+                const currentMin = current ? Math.max(min, Math.min(max, current.min[i])) : min;
+                const currentMax = current ? Math.max(min, Math.min(max, current.max[i])) : min;
+                const x0 = 95;
+                const width = 355;
+                const selX = x0 + ((currentMin - min) / extent) * width;
+                const selW = Math.max(2, ((currentMax - currentMin) / extent) * width);
+                const selected = i === axisIdx ? ' class="axis-label"' : "";
+                return `
+                    <text${selected} x="22" y="${y + 15}">${label}</text>
+                    <rect class="extent" x="${x0}" y="${y}" width="${width}" height="20" rx="4"></rect>
+                    <rect class="selection" x="${selX}" y="${y}" width="${selW}" height="20" rx="4"></rect>
+                    <text x="${x0}" y="${y - 6}">${min.toPrecision(5)}</text>
+                    <text x="${x0 + width - 58}" y="${y - 6}">${max.toPrecision(5)}</text>
+                `;
+            }).join("");
+            let preview = null;
+            try {
+                preview = z88BoxFromVisualSlab(bounds);
+            } catch (_err) {
+                preview = null;
+            }
+            const previewText = preview
+                ? `Preview: ${preview.axis}-${preview.side}, thickness ${preview.thickness.toPrecision(5)}`
+                : "Preview unavailable";
+            svg.innerHTML = `
+                <text x="18" y="18">${previewText}</text>
+                ${rows}
+                <text x="18" y="158">Orange = current selected payload box field interval.</text>
+            `;
+        }
+
         function loadZ88Template() {
             const recipe = document.getElementById("z88Recipe").value;
             const stlPath = document.getElementById("z88StlPath").value || "C:/path/to/part.stl";
@@ -479,6 +863,12 @@
                 ...z88Templates[recipe]
             };
             document.getElementById("z88Payload").value = JSON.stringify(payload, null, 2);
+            try {
+                syncZ88BoxFieldsFromPayload(false);
+            } catch (_err) {
+                renderZ88BoxPreview();
+            }
+            renderZ88BoxPreview();
         }
 
         function readZ88RecipePayload(prepareRun) {
@@ -493,12 +883,13 @@
 
         async function loadZ88Catalog() {
             try {
-                const [recipes, materials, safety] = await Promise.all([
+                const [recipes, materials, safety, capabilities] = await Promise.all([
                     fetch("/z88/recipes").then(r => r.json()),
                     fetch("/z88/materials").then(r => r.json()),
-                    fetch("/z88/safety_presets").then(r => r.json())
+                    fetch("/z88/safety_presets").then(r => r.json()),
+                    fetch("/z88/capabilities").then(r => r.json())
                 ]);
-                z88Output({ recipes, materials: Object.keys(materials), safety_presets: safety });
+                z88Output({ recipes, materials: Object.keys(materials), safety_presets: safety, capabilities });
             } catch (err) {
                 z88Output("Failed to load Z88 presets: " + err);
             }
@@ -615,7 +1006,7 @@
 
         async function previewBracket() {
             statsEl.innerText = "Loading bracket preview...";
-            const res = await fetch("http://127.0.0.1:8000/bracket/preview");
+            const res = await fetch(`${API_ORIGIN}/bracket/preview`);
             const data = await res.json();
             statsEl.innerText = `Bracket ${data.nelx}x${data.nely}x${data.nelz}`;
             const loader = new THREE.GLTFLoader();
@@ -640,7 +1031,7 @@
             form.append("file", fileInput.files[0]);
             form.append("pitch", String(pitch));
             statsEl.innerText = "Uploading / voxelizing...";
-            const res = await fetch("http://127.0.0.1:8000/upload_stl", { method: "POST", body: form });
+            const res = await fetch(`${API_ORIGIN}/upload_stl`, { method: "POST", body: form });
             const data = await res.json();
             if (data.error) {
                 statsEl.innerText = "Upload failed: " + data.error;
@@ -693,7 +1084,7 @@
                     stress_hotspot_density: 0.9,
                 };
             } else if (prob === "custom") {
-                const state = await fetch("http://127.0.0.1:8000/upload_state").then(r => r.json());
+                const state = await fetch(`${API_ORIGIN}/upload_state`).then(r => r.json());
                 if (!state.loaded) {
                     statsEl.innerText = "Upload an STL first (or server uses default box).";
                 }
@@ -720,7 +1111,7 @@
                 };
             }
 
-            await fetch("http://127.0.0.1:8000/run", {
+            await fetch(`${API_ORIGIN}/run`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),

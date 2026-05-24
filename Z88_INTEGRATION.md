@@ -68,8 +68,14 @@ Implemented:
 - FastAPI Z88 endpoints for presets, recipe configuration, run preparation,
   native OC/H8 project generation, backend execution, and native result
   collection.
+- FastAPI Z88 preflight endpoints for STL bounds inspection and recipe
+  validation without writing a run folder:
+  - `POST /z88/stl/inspect`
+  - `POST /z88/stl/suggest_end_boxes`
+  - `POST /z88/recipes/validate`
 - Browser Z88 workflow panel in `web/index.html`, including explicit native
-  OC/H8 generation and optional stress generation controls.
+  OC/H8 generation, optional stress generation controls, STL bounds inspection,
+  visual bounding-box slab picking, and region-box payload helpers.
 - Packaged app entry point, PyInstaller spec, package build script, packaged
   smoke test, and generated sample STL workflow:
   - `packaging/z88_topopt_app.py`
@@ -179,6 +185,12 @@ The final argument to `z88rTOSS.exe -SIG` is an energy output file. Do not point
 it at `Displacements\Displacements_final.txt`; doing that overwrites the
 displacement file.
 
+Automatic stress is intentionally limited to wrapper-generated OC/H8 projects
+that include `z88_native_project_write.json`. Copied GUI-generated folders,
+TOSS/SKO projects, and tetrahedral probes should report `unsupported` for
+automatic stress and should use Z88Arion GUI export or later independent
+verification instead.
+
 Generate a native OC/H8 project directly from an STL config:
 
 ```powershell
@@ -203,8 +215,83 @@ Current generated-project limits:
 - Explicit box selectors for supports, loads, and passive-solid regions.
 - Material modulus is scaled from Pa to force-per-configured-length-squared;
   for `units="mm"`, Pa is converted to N/mm^2.
-- Very low volume fractions can still produce singular Z88 solves unless
-  support/load/passive regions keep a connected load path.
+- The writer rejects disconnected voxel solids before writing native Z88 files.
+- The writer rejects `volume_fraction` values that are below the mandatory
+  support/load/passive-solid fixed element volume.
+- `z88_native_project_write.json` reports `target_element_count`,
+  `minimum_fixed_volume_fraction`, and `solid_component_count` so a rejected or
+  marginal setup can be adjusted before running Z88.
+- Very low volume fractions can still produce singular Z88 solves even after
+  these checks if the remaining design region cannot form a connected load path.
+
+Validate every generated recipe sample through recipe config, STL inspection,
+and native OC/H8 project writing:
+
+```powershell
+python scripts/z88_validate_recipe_samples.py --output z88_assets\outputs\recipe_sample_validation.json
+```
+
+Current local result:
+
+- `sample_count`: `5`
+- `failed_count`: `0`
+- All five sample recipes wrote native projects under
+  `runs\z88_recipe_validation\native_projects\`.
+- The report includes STL bounds, watertightness, mesh counts, native element
+  counts, fixed-region volume requirements, and writer warnings.
+
+Validate simple online STL structures through the confirmed OC/H8 generated
+workflow:
+
+```powershell
+python scripts/z88_validate_online_stls.py --run-workflow --workflow-timeout 180 --output z88_assets\outputs\online_stl_validation_workflow.json
+```
+
+Current online sources:
+
+- Wikimedia Commons `Cube.stl`.
+- NIST Additive Manufacturing Test Artifact STL.
+
+Current local result:
+
+- `source_count`: `2`
+- `failed_count`: `0`
+- Both sources completed optimizer replay, displacement postprocess, and
+  generated OC/H8 stress postprocess.
+- Workflow status is `partial` because generated optimized-STL export and mesh
+  QA are not wired into this path yet.
+
+Run the current accuracy evidence gate:
+
+```powershell
+python scripts/z88_accuracy_gate.py --output z88_assets\outputs\accuracy_gate.json
+```
+
+Current gate status: `passed` for confirmed GUI OC compliance references and
+the generated H8 online-STL workflows. TOSS/SKO, larger copied-fixture stress,
+and general tetra generation are recorded as capability gates rather than
+passed accuracy gates.
+
+Probe the installed TetGen path without enabling tetrahedral project writing:
+
+```powershell
+python scripts/z88_tetgen_probe.py runs\z88_representative_drone_samples\generic_bracket_box.stl --probe-direct-stl --output-dir z88_assets\outputs\tetgen_probe\representative_generic_bracket
+```
+
+Current TetGen evidence:
+
+- Direct binary STL input failed locally with return code `3` and `Wrong number
+  of vertices in file`.
+- Converting the same STL to OFF first allowed TetGen to write
+  `z88structure.txt`.
+- The generated structure header was `3 222 533 666 0 #AURORA_V2`.
+- The first node ID was `0`, so this path emits zero-based IDs.
+- This is probe evidence only. Tetrahedral native project generation remains
+  disabled until the rest of the Z88 project file contract is confirmed.
+- Additional online-STL evidence: the simple Wikimedia cube can produce
+  `z88structure.txt` through OFF conversion, while the NIST artifact fails
+  through both direct STL and OFF conversion. Keep tetrahedral generation
+  disabled as the default raw-STL path.
 
 Run the confirmed generated OC workflow end to end:
 
@@ -329,6 +416,10 @@ Open `http://127.0.0.1:8000`, scroll to **Z88Arion Workflow**, paste a local
 STL path, adjust the recipe payload, and choose one of:
 
 - **Configure Only**: validate the recipe and return `Z88RunConfig`.
+- **Inspect STL Bounds**: read bounded STL metadata from the server and show
+  min/max bounds, extents, watertightness, area, and volume when available.
+- **Validate Payload**: run `/z88/recipes/validate`, returning both the config
+  and geometry metadata without writing any run folder.
 - **Prepare Run Folder**: create the conservative STL handoff folder.
 - **Generate Native OC Project**: voxelize the STL and write the confirmed
   OC/H8 native project contract.
@@ -400,6 +491,9 @@ Current stress/von-Mises status:
 - The same stress command is not proven reliable on the larger copied
   GUI-generated OC fixtures, so backend/API/UI stress generation remains
   opt-in.
+- Current copied GUI-fixture probe: `1_Balken_OC` returns Windows access
+  violation code `3221225477` after writing a partial energy file and an empty
+  nodal file. The wrapper reports this as `status="crashed"`.
 
 Compare manually run pre/post project folders:
 

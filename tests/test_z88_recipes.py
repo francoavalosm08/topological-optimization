@@ -18,9 +18,12 @@ from z88_bridge import (
     configure_drone_landing_gear,
     configure_drone_motor_mount,
     configure_generic_bracket,
+    configure_recipe_from_payload,
     configure_ring_wing_strut,
+    inspect_stl_geometry,
     load_material_presets,
     load_safety_presets,
+    suggest_end_boxes_from_stl,
 )
 
 
@@ -73,6 +76,50 @@ def test_generic_bracket_recipe_creates_valid_config(tmp_path: Path) -> None:
     assert config.supports[0].region.selector["type"] == "box"
     assert config.loads[0].force == (0.0, -250.0, 0.0)
     assert "generic_bracket" in config.notes
+
+
+def test_configure_recipe_from_payload_matches_ui_contract(tmp_path: Path) -> None:
+    stl = _box_stl(tmp_path / "box.stl")
+
+    config = configure_recipe_from_payload(
+        {
+            "recipe": "generic_bracket",
+            "stl_path": str(stl),
+            "project_name": "payload_bracket",
+            "support_box": {"min": [-5.0, -2.0, -1.0], "max": [-4.0, 2.0, 1.0]},
+            "load_box": {"min": [4.0, -2.0, -1.0], "max": [5.0, 2.0, 1.0]},
+            "force": [0.0, -250.0, 0.0],
+            "volume_fraction": 0.5,
+        }
+    )
+
+    config.validate()
+    assert config.project_name == "payload_bracket"
+    assert config.optimizer.volume_fraction == 0.5
+    assert config.loads[0].force == (0.0, -250.0, 0.0)
+
+
+def test_inspect_stl_geometry_reports_bounds_and_mesh_counts(tmp_path: Path) -> None:
+    stl = _box_stl(tmp_path / "box.stl")
+
+    geometry = inspect_stl_geometry(stl)
+
+    assert geometry["bounds"]["min"] == [-5.0, -2.0, -1.0]
+    assert geometry["bounds"]["max"] == [5.0, 2.0, 1.0]
+    assert geometry["watertight"] is True
+    assert geometry["faces"] > 0
+
+
+def test_suggest_end_boxes_from_stl_uses_longest_axis(tmp_path: Path) -> None:
+    stl = _box_stl(tmp_path / "box.stl")
+
+    suggestion = suggest_end_boxes_from_stl(stl, thickness_fraction=0.1)
+
+    assert suggestion["axis"] == "x"
+    assert suggestion["support_box"]["min"] == [-5.0, -2.0, -1.0]
+    assert suggestion["support_box"]["max"][0] == -4.0
+    assert suggestion["load_box"]["min"][0] == 4.0
+    assert suggestion["load_box"]["max"] == [5.0, 2.0, 1.0]
 
 
 def test_generic_bracket_recipe_rejects_non_intersecting_regions(tmp_path: Path) -> None:

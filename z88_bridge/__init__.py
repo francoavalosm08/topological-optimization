@@ -26,6 +26,7 @@ from .backend import (
     find_generated_oc_project_dir,
     run_best_available_backend,
 )
+from .capabilities import Z88Capability, current_capabilities, summarize_native_project_capability
 from .config import (
     ExportSettings,
     LoadCase,
@@ -101,12 +102,15 @@ from .recipes import (
     configure_drone_landing_gear,
     configure_drone_motor_mount,
     configure_generic_bracket,
+    configure_recipe_from_payload,
     configure_ring_wing_strut,
+    inspect_stl_geometry,
     load_material_presets,
     load_safety_presets,
+    suggest_end_boxes_from_stl,
 )
 from .samples import SAMPLE_ASSETS, SampleAsset, generate_sample_assets
-from .workflow import GeneratedOCWorkflowResult, run_generated_oc_workflow
+from .workflow import GeneratedOCWorkflowResult, run_generated_oc_workflow, supports_automatic_stress_postprocess
 
 __all__ = [
     "ActiveSet",
@@ -146,6 +150,7 @@ __all__ = [
     "StressSummary",
     "Z88Adapter",
     "Z88BridgeError",
+    "Z88Capability",
     "Z88HeadlessUnavailableError",
     "Z88Installation",
     "Z88NotInstalledError",
@@ -168,7 +173,9 @@ __all__ = [
     "configure_drone_landing_gear",
     "configure_drone_motor_mount",
     "configure_generic_bracket",
+    "configure_recipe_from_payload",
     "configure_ring_wing_strut",
+    "current_capabilities",
     "discover_installation",
     "diff_project_dirs",
     "ensure_asset_layout",
@@ -176,6 +183,7 @@ __all__ = [
     "find_generated_oc_project_dir",
     "find_latest_constitutive_law",
     "generate_sample_assets",
+    "inspect_stl_geometry",
     "inventory_files",
     "inventory_snapshot_folder",
     "load_material_presets",
@@ -200,6 +208,9 @@ __all__ = [
     "run_packaging_preflight",
     "sha256_file",
     "summarize_project_files",
+    "summarize_native_project_capability",
+    "supports_automatic_stress_postprocess",
+    "suggest_end_boxes_from_stl",
     "write_audit_outputs",
     "write_crash_report",
     "write_manifest",

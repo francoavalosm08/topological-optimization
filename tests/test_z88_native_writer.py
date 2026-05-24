@@ -87,6 +87,9 @@ def test_write_native_oc_project_from_grid_writes_confirmed_project_contract(tmp
     assert result.element_count == 2
     assert result.boundary_condition_count == 16
     assert result.fixed_element_count == 2
+    assert result.target_element_count == 2
+    assert result.minimum_fixed_volume_fraction == 1.0
+    assert result.solid_component_count == 1
     assert result.material_modulus == 68_900.0
     assert (project / "Z88Arion.ctrl").exists()
     assert (project / "Z88Arion.fea").read_text(encoding="utf-8").count("-SICCG") >= 6
@@ -132,3 +135,44 @@ def test_write_native_oc_project_rejects_empty_region_selection(tmp_path: Path) 
         assert "selected no mesh nodes" in str(exc)
     else:  # pragma: no cover - explicit failure path
         raise AssertionError("expected empty support selection to fail")
+
+
+def test_write_native_oc_project_rejects_disconnected_voxel_grid(tmp_path: Path) -> None:
+    install = _fake_install(tmp_path / "Z88ArionV3")
+    solid = np.zeros((3, 1, 1), dtype=bool)
+    solid[0, 0, 0] = True
+    solid[2, 0, 0] = True
+    grid = VoxelGrid(
+        nelx=3,
+        nely=1,
+        nelz=1,
+        solid=solid,
+        pitch=1.0,
+        origin=np.array([0.0, 0.0, 0.0]),
+    )
+
+    try:
+        write_native_oc_project_from_grid(_config(), grid, tmp_path / "project", install_root=install)
+    except ValueError as exc:
+        assert "disconnected solid components" in str(exc)
+    else:  # pragma: no cover - explicit failure path
+        raise AssertionError("expected disconnected grid to fail")
+
+
+def test_write_native_oc_project_rejects_volume_below_fixed_regions(tmp_path: Path) -> None:
+    install = _fake_install(tmp_path / "Z88ArionV3")
+    config = Z88RunConfig.from_dict(
+        {
+            **_config().to_dict(),
+            "optimizer": {"method": "oc", "volume_fraction": 0.25, "max_iterations": 1},
+        }
+    )
+
+    try:
+        write_native_oc_project_from_grid(config, _grid(), tmp_path / "project", install_root=install)
+    except ValueError as exc:
+        message = str(exc)
+        assert "mandatory fixed/passive volume" in message
+        assert "Use volume_fraction >=" in message
+    else:  # pragma: no cover - explicit failure path
+        raise AssertionError("expected infeasible fixed-region volume to fail")

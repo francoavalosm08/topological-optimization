@@ -80,3 +80,22 @@ def test_packaged_entrypoint_smoke_test_allows_missing_z88() -> None:
     payload = json.loads(completed.stdout)
     assert payload["status"] == "ok"
     assert payload["route_count"] > 0
+
+
+def test_build_package_script_checks_native_command_exit_codes() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "scripts" / "z88_build_package.ps1").read_text(encoding="utf-8")
+
+    assert "Sample generation failed with exit code" in script
+    assert "Packaging preflight failed with exit code" in script
+    assert "PyInstaller build failed with exit code" in script
+
+
+def test_clean_vm_validation_script_cleans_packaged_server_by_port() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "scripts" / "z88_clean_vm_validate.ps1").read_text(encoding="utf-8")
+
+    assert "function Stop-PackagedServerForPort" in script
+    assert "CommandLine -like \"*$escapedPort*\"" in script
+    assert "$result.server_smoke = [ordered]@{" in script
+    assert "exit 2" in script
