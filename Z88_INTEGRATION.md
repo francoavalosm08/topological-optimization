@@ -258,15 +258,21 @@ Current online sources:
 
 - Wikimedia Commons `Cube.stl`.
 - NIST Additive Manufacturing Test Artifact STL.
+- Wikimedia Commons `Sphere.stl`.
+- Wikimedia Commons `Cilindro_3D.stl`.
 
 Current local result:
 
-- `source_count`: `2`
+- `source_count`: `4`
 - `failed_count`: `0`
-- Both sources completed optimizer replay, displacement postprocess, and
-  generated OC/H8 stress postprocess.
-- Workflow status is `partial` because generated optimized-STL export and mesh
-  QA are not wired into this path yet.
+- All four sources completed optimizer replay, displacement postprocess,
+  generated OC/H8 stress postprocess, optimized STL export, and mesh QA.
+- Workflow status remains `partial` because these are one-iteration smoke runs
+  and some optional native histories, such as SIMP convergence, are not emitted.
+- The validator reuses cached downloads when present and deletes only its own
+  generated validation project folder before rewriting it. This avoids public
+  host rate-limit failures and stale Z88 output contamination during repeated
+  local gate runs.
 
 Run the current accuracy evidence gate:
 
@@ -487,6 +493,14 @@ Current local packaging status:
 - The packaged smoke test passes.
 - A packaged runtime server smoke on `http://127.0.0.1:8010/` served the Z88
   browser UI successfully.
+- Local packaged validation passed with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/z88_clean_vm_validate.ps1 -Exe dist\Z88TopologyOptimizer.exe -Port 8020 -Output z88_assets\outputs\clean_vm_validation_local.json
+```
+
+This is a local packaged-server validation, not a true fresh Windows VM release
+test.
 
 Current stress/von-Mises status:
 

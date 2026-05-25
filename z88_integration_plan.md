@@ -131,15 +131,21 @@ unverified format assumptions.
     into ignored `z88_assets/online_stls/`, builds generic-bracket
     configurations, writes native OC/H8 projects, and can run the confirmed
     generated workflow.
-  - Current sources are Wikimedia Commons `Cube.stl` and the NIST Additive
-    Manufacturing Test Artifact STL.
+  - The validator reuses cached downloads when present, so repeated local gate
+    runs do not fail only because a public host rate-limits requests.
+  - The validator removes its own generated project folder before rewriting it,
+    so stale Z88 result files cannot contaminate a later validation run.
+  - Current sources are Wikimedia Commons `Cube.stl`, the NIST Additive
+    Manufacturing Test Artifact STL, Wikimedia Commons `Sphere.stl`, and
+    Wikimedia Commons `Cilindro_3D.stl`.
   - Current workflow report:
-    `z88_assets/outputs/online_stl_validation_workflow.json`, `source_count=2`,
+    `z88_assets/outputs/online_stl_validation_workflow.json`, `source_count=4`,
     `failed_count=0`.
-  - Both online STLs completed optimizer replay, displacement postprocess, and
-    generated OC/H8 stress postprocess. Workflow status remains `partial`
-    because optimized STL export and mesh QA are not yet part of the generated
-    workflow.
+  - All four online STLs completed optimizer replay, displacement postprocess,
+    generated OC/H8 stress postprocess, optimized STL export, and mesh QA.
+  - Workflow status remains `partial` because these are one-iteration smoke
+    runs and some optional native histories, such as SIMP convergence, are not
+    emitted.
 - Current accuracy-gate evidence:
   - `scripts/z88_accuracy_gate.py` validates known GUI OC compliance
     references, generated online STL workflow results, and recorded TetGen
@@ -177,6 +183,11 @@ unverified format assumptions.
     does not fail from low-volume singularity.
   - `dist/Z88TopologyOptimizer.exe` was built locally and served the Z88 UI in
     a runtime smoke test.
+  - `scripts/z88_clean_vm_validate.ps1` passed locally against the packaged
+    executable on port `8020` and wrote
+    `z88_assets/outputs/clean_vm_validation_local.json`. This validates the
+    packaged server/startup path, but it is not a substitute for a true fresh
+    Windows VM release test.
 - Current local solver limitation:
   - The GUI default `-PARAO`/PARDISO path crashes locally in `z88rofl.exe` at
     `Start PARDISO` with signed Windows NTSTATUS `-1073741795`.
@@ -677,9 +688,9 @@ Exit gate:
 
 Goal: package only after backend and UI gates pass.
 
-Status: complete for a local Windows executable build. A formal installer
-wrapper and clean-VM validation remain release tasks, not core integration
-blockers.
+Status: complete for a local Windows executable build and local packaged
+server validation. A formal installer wrapper and true clean-VM validation
+remain release tasks, not core integration blockers.
 
 Coding steps:
 
@@ -727,7 +738,9 @@ Exit gate:
   - `powershell -ExecutionPolicy Bypass -File scripts/z88_build_package.ps1`
   - `dist/Z88TopologyOptimizer.exe --smoke-test --no-browser --allow-missing-z88`
   - packaged server smoke on `http://127.0.0.1:8010/`
-- Remaining release-only gate: validate on a clean Windows VM.
+  - local packaged validation with
+    `powershell -ExecutionPolicy Bypass -File scripts/z88_clean_vm_validate.ps1 -Exe dist\Z88TopologyOptimizer.exe -Port 8020 -Output z88_assets\outputs\clean_vm_validation_local.json`
+- Remaining release-only gate: validate on a true fresh Windows VM.
 
 ## Accuracy Definition
 
@@ -762,10 +775,11 @@ Completed by this roadmap update:
 
 Current next pass:
 
-1. In progress for practical wrapper scope: smooth the simple-structure
-   workflow around wrapper-generated OC/H8 projects. Current implemented piece:
-   generated workflows export `optimized.stl` and mesh QA automatically.
-2. Run a clean Windows VM validation of `dist/Z88TopologyOptimizer.exe`.
+1. Completed for current practical wrapper scope: simple-structure validation
+   now covers four trusted online STLs and confirms optimizer replay,
+   displacement, generated OC/H8 stress, `optimized.stl`, and `mesh_quality.json`.
+2. Completed locally: packaged executable rebuild and local packaged validation
+   pass. Remaining release-only work is a true clean Windows VM validation.
 3. Completed in tests: the API now generates sample STLs, configures the
    `generic_bracket_box` recipe payload, and writes a native OC/H8 project from
    that generated sample using the real writer path.

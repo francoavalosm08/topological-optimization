@@ -48,6 +48,26 @@ ONLINE_STL_SOURCES = (
         "voxel_pitch": 8.0,
         "force": (0.0, -100.0, 0.0),
     },
+    {
+        "name": "wikimedia_sphere",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Sphere.stl",
+        "download_url": "https://commons.wikimedia.org/wiki/Special:Redirect/file/Sphere.stl",
+        "filename": "wikimedia_sphere.stl",
+        "kind": "stl",
+        "description": "Public-domain sphere STL from Wikimedia Commons.",
+        "voxel_pitch": 10.0,
+        "force": (0.0, -100.0, 0.0),
+    },
+    {
+        "name": "wikimedia_cylinder",
+        "source_page": "https://commons.wikimedia.org/wiki/File:Cilindro_3D.stl",
+        "download_url": "https://commons.wikimedia.org/wiki/Special:Redirect/file/Cilindro_3D.stl",
+        "filename": "wikimedia_cylinder.stl",
+        "kind": "stl",
+        "description": "Right-cylinder STL from Wikimedia Commons.",
+        "voxel_pitch": 3.0,
+        "force": (0.0, -50.0, 0.0),
+    },
 )
 
 
@@ -152,6 +172,8 @@ def _validate_source(
         config = configure_recipe_from_payload(payload)
         config.validate()
         project_dir = projects_dir / source["name"] / "z88_project"
+        if project_dir.exists():
+            shutil.rmtree(project_dir)
         write_result = write_native_oc_project(
             config,
             project_dir,
@@ -196,6 +218,8 @@ def _validate_source(
 
 
 def _download(url: str, output: Path) -> None:
+    if output.is_file() and output.stat().st_size > 0:
+        return
     request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urlopen(request, timeout=60) as response:
         output.write_bytes(response.read())
