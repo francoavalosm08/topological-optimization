@@ -246,7 +246,10 @@ def inventory_snapshot_folder(
     final_summary: ScalarFieldSummary | None = None
     if files:
         latest = max(files, key=lambda item: item.iteration if item.iteration is not None else -1)
-        final_summary = parse_scalar_field_summary(project_dir / latest.relative_path)
+        if label == "youngs_modulus":
+            final_summary = parse_youngs_modulus_summary(project_dir / latest.relative_path)
+        else:
+            final_summary = parse_scalar_field_summary(project_dir / latest.relative_path)
     else:
         warnings.append(f"snapshot folder is empty: {folder}")
     if final_summary is not None:
@@ -309,6 +312,77 @@ def parse_scalar_field_summary(path: str | Path) -> ScalarFieldSummary:
 
     if row_count == 0 and not parse_errors:
         warnings.append(f"scalar field file contains no data rows: {path}")
+    mean_value = total / row_count if row_count else None
+    return ScalarFieldSummary(
+        str(path),
+        row_count,
+        min_value,
+        max_value,
+        mean_value,
+        min_id,
+        max_id,
+        zero_count,
+        nonzero_count,
+        warnings=tuple(warnings),
+        parse_errors=tuple(parse_errors),
+    )
+
+
+def parse_youngs_modulus_summary(path: str | Path) -> ScalarFieldSummary:
+    """Summarize OC/TOSS ID-value rows and SKO value-poisson rows for modulus snapshots."""
+    path = Path(path)
+    warnings: list[str] = []
+    parse_errors: list[str] = []
+    row_count = 0
+    zero_count = 0
+    nonzero_count = 0
+    total = 0.0
+    min_value: float | None = None
+    max_value: float | None = None
+    min_id: int | None = None
+    max_id: int | None = None
+    if not path.exists():
+        warnings.append(f"missing YoungsModulus file: {path}")
+        return ScalarFieldSummary(str(path), 0, None, None, None, None, None, 0, 0, warnings=tuple(warnings))
+    if path.is_dir():
+        parse_errors.append(f"expected YoungsModulus file but found directory: {path}")
+        return ScalarFieldSummary(str(path), 0, None, None, None, None, None, 0, 0, parse_errors=tuple(parse_errors))
+
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            for line_number, raw_line in enumerate(handle, start=1):
+                parts = raw_line.split()
+                if len(parts) != 2:
+                    continue
+                try:
+                    first = _parse_float(parts[0])
+                    second = _parse_float(parts[1])
+                except ValueError:
+                    parse_errors.append(f"{path}:{line_number}: invalid YoungsModulus row {raw_line.strip()!r}")
+                    continue
+                if parts[0].lstrip("+-").isdigit() and abs(second) > 1.0:
+                    item_id = int(first)
+                    value = second
+                else:
+                    item_id = row_count + 1
+                    value = first
+                row_count += 1
+                total += value
+                if value == 0.0:
+                    zero_count += 1
+                else:
+                    nonzero_count += 1
+                if min_value is None or value < min_value:
+                    min_value = value
+                    min_id = item_id
+                if max_value is None or value > max_value:
+                    max_value = value
+                    max_id = item_id
+    except OSError as exc:
+        parse_errors.append(f"could not read {path}: {exc}")
+
+    if row_count == 0 and not parse_errors:
+        warnings.append(f"YoungsModulus file contains no data rows: {path}")
     mean_value = total / row_count if row_count else None
     return ScalarFieldSummary(
         str(path),

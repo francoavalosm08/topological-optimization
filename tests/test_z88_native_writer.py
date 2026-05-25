@@ -84,6 +84,10 @@ def test_write_native_oc_project_from_grid_writes_confirmed_project_contract(tmp
     result = write_native_oc_project_from_grid(_config(), _grid(), project, install_root=install)
 
     assert result.node_count == 12
+    assert result.optimizer_method == "oc"
+    assert result.z88_control_algorithm == 1
+    assert result.z88_ctrl_method == "SIMP"
+    assert result.z88_ctrl_algorithm == "OC"
     assert result.element_count == 2
     assert result.boundary_condition_count == 16
     assert result.fixed_element_count == 2
@@ -107,6 +111,31 @@ def test_write_native_oc_project_from_grid_writes_confirmed_project_contract(tmp
     assert manifest["project_dir"] == str(project)
     summary = json.loads(Path(result.summary_json).read_text(encoding="utf-8"))
     assert summary["control"]["TOSOLVER"]["OPTALGORITHM"] == 1
+
+
+def test_write_native_project_from_grid_supports_confirmed_toss_and_sko_methods(tmp_path: Path) -> None:
+    install = _fake_install(tmp_path / "Z88ArionV3")
+
+    for method, control_algorithm, ctrl_method in (("toss", 3, "TOSS_SIMP"), ("sko", 4, "SKO")):
+        config = Z88RunConfig.from_dict(
+            {
+                **_config().to_dict(),
+                "optimizer": {"method": method, "volume_fraction": 1.0, "max_iterations": 3},
+            }
+        )
+        project = tmp_path / method
+
+        result = write_native_oc_project_from_grid(config, _grid(), project, install_root=install)
+
+        assert result.optimizer_method == method
+        assert result.z88_control_algorithm == control_algorithm
+        assert result.z88_ctrl_method == ctrl_method
+        assert f"OPTALGORITHM                 {control_algorithm}" in (project / "z88control.txt").read_text(
+            encoding="utf-8"
+        )
+        ctrl_text = (project / "Z88Arion.ctrl").read_text(encoding="utf-8")
+        assert f"OptMethod    :{ctrl_method}" in ctrl_text
+        assert "OptAlgorithm :OC" in ctrl_text
 
 
 def test_write_native_oc_project_rejects_empty_region_selection(tmp_path: Path) -> None:

@@ -1,4 +1,4 @@
-"""Generate a confirmed OC-native Z88 project from a Z88RunConfig JSON file."""
+"""Generate a confirmed H8-native Z88 project from a Z88RunConfig JSON file."""
 from __future__ import annotations
 
 import argparse
@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from z88_bridge import Z88RunConfig, run_generated_oc_workflow, write_native_oc_project
+from z88_bridge import Z88RunConfig, run_generated_topology_workflow, write_native_oc_project
 
 
 def main() -> int:
@@ -25,7 +25,7 @@ def main() -> int:
     parser.add_argument(
         "--run-workflow",
         action="store_true",
-        help="After writing, run the confirmed generated-OC backend workflow",
+        help="After writing, run the confirmed generated OC/TOSS/SKO H8 backend workflow",
     )
     parser.add_argument("--optimizer-timeout", type=float, default=900.0)
     parser.add_argument("--displacement-timeout", type=float, default=300.0)
@@ -49,7 +49,7 @@ def main() -> int:
     payload: dict[str, object] = {"write": result.to_dict()}
     exit_code = 0
     if args.run_workflow:
-        workflow = run_generated_oc_workflow(
+        workflow = run_generated_topology_workflow(
             project_dir,
             install_root=args.install_root,
             optimizer_timeout_s=args.optimizer_timeout,

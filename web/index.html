@@ -192,7 +192,7 @@
 
     <section id="z88-panel">
         <h2>Z88Arion Workflow</h2>
-        <p>Use this for Z88-backed recipe setup and backend/guided handoff. STL paths must be local paths visible to this machine. Generated OC/H8 runs write <code>optimized.stl</code> and <code>mesh_quality.json</code> automatically.</p>
+        <p>Use this for Z88-backed recipe setup and backend/guided handoff. STL paths must be local paths visible to this machine. Generated OC/TOSS/SKO H8 runs write <code>optimized.stl</code> and <code>mesh_quality.json</code> automatically.</p>
         <div class="z88-grid">
             <label>Recipe
                 <select id="z88Recipe" onchange="loadZ88Template()">
@@ -211,6 +211,13 @@
             </label>
             <label>Z88 install root
                 <input id="z88InstallRoot" placeholder="C:/Z88ArionV3" />
+            </label>
+            <label>Generated optimizer
+                <select id="z88OptimizerMethod">
+                    <option value="oc">OC</option>
+                    <option value="toss">TOSS</option>
+                    <option value="sko">SKO</option>
+                </select>
             </label>
         </div>
         <label style="margin-top:12px;">Recipe payload
@@ -282,7 +289,7 @@
             </label>
             <label>
                 <input id="z88GenerateStress" type="checkbox" />
-                Generate stress output (generated OC/H8 only)
+                Generate stress output (generated OC/TOSS/SKO H8 only)
             </label>
         </div>
         <div class="controls">
@@ -291,7 +298,7 @@
             <button type="button" onclick="generateZ88Samples()">Generate Samples</button>
             <button type="button" onclick="configureZ88Recipe(false)">Configure Only</button>
             <button type="button" onclick="configureZ88Recipe(true)">Prepare Run Folder</button>
-            <button type="button" onclick="generateZ88NativeProject()">Generate Native OC Project</button>
+            <button type="button" onclick="generateZ88NativeProject()">Generate Native H8 Project</button>
             <button type="button" onclick="runZ88Backend()">Run / Guide Backend</button>
         </div>
         <pre id="z88-output">Z88 output will appear here.</pre>
@@ -860,6 +867,7 @@
                 recipe,
                 stl_path: stlPath,
                 project_name: recipe,
+                optimizer_method: document.getElementById("z88OptimizerMethod").value,
                 ...z88Templates[recipe]
             };
             document.getElementById("z88Payload").value = JSON.stringify(payload, null, 2);
@@ -875,6 +883,7 @@
             const payload = JSON.parse(document.getElementById("z88Payload").value);
             payload.recipe = document.getElementById("z88Recipe").value;
             payload.stl_path = document.getElementById("z88StlPath").value || payload.stl_path;
+            payload.optimizer_method = document.getElementById("z88OptimizerMethod").value;
             payload.prepare_run = prepareRun;
             const installRoot = document.getElementById("z88InstallRoot").value;
             if (installRoot) payload.install_root = installRoot;
@@ -920,6 +929,7 @@
                     const first = data.samples[0];
                     document.getElementById("z88Recipe").value = first.recipe;
                     document.getElementById("z88StlPath").value = first.stl_path;
+                    document.getElementById("z88OptimizerMethod").value = first.payload.optimizer_method || "oc";
                     document.getElementById("z88Payload").value = JSON.stringify(first.payload, null, 2);
                 }
                 z88Output(data);

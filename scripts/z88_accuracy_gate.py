@@ -163,6 +163,95 @@ def _check_online_workflow(path: Path) -> dict[str, Any]:
     return check
 
 
+def _check_structural_method_workflow(path: Path) -> dict[str, Any]:
+    check: dict[str, Any] = {"name": "structural_oc_toss_sko_workflows", "path": str(path)}
+    if not path.exists():
+        check.update({"status": "missing", "message": "structural method workflow report is missing"})
+        return check
+
+    try:
+        report = _load_json(path)
+    except Exception as exc:
+        check.update({"status": "failed", "message": f"could not read workflow report: {exc}"})
+        return check
+
+    results = report.get("results")
+    if not isinstance(results, list) or not results:
+        check.update({"status": "failed", "message": "workflow report has no results"})
+        return check
+
+    result_checks: list[dict[str, Any]] = []
+    for result in results:
+        item: dict[str, Any] = {
+            "name": result.get("name") if isinstance(result, dict) else None,
+            "optimizer_method": result.get("optimizer_method") if isinstance(result, dict) else None,
+            "status": "failed",
+        }
+        if not isinstance(result, dict):
+            item["message"] = "result entry is not an object"
+            result_checks.append(item)
+            continue
+
+        workflow = result.get("workflow")
+        if not isinstance(workflow, dict):
+            item["message"] = "workflow result missing"
+            result_checks.append(item)
+            continue
+
+        histories = workflow.get("histories")
+        displacement = workflow.get("displacement_summary")
+        stress = workflow.get("stress_summary")
+        optimized_export = workflow.get("optimized_export")
+        nodal_stress = stress.get("nodal") if isinstance(stress, dict) else None
+        elemental_stress = stress.get("elemental") if isinstance(stress, dict) else None
+        compliance = histories.get("overall_compliance") if isinstance(histories, dict) else None
+        final_compliance = compliance.get("final_value") if isinstance(compliance, dict) else None
+
+        item.update(
+            {
+                "workflow_status": workflow.get("status"),
+                "optimizer_status": workflow.get("optimizer_status"),
+                "displacement_status": workflow.get("displacement_status"),
+                "stress_status": workflow.get("stress_status"),
+                "final_compliance": final_compliance,
+                "max_displacement": displacement.get("max_magnitude") if isinstance(displacement, dict) else None,
+                "max_nodal_stress": nodal_stress.get("max_value") if isinstance(nodal_stress, dict) else None,
+                "max_elemental_stress": elemental_stress.get("max_value")
+                if isinstance(elemental_stress, dict)
+                else None,
+                "optimized_export_status": optimized_export.get("status")
+                if isinstance(optimized_export, dict)
+                else None,
+            }
+        )
+
+        passed = (
+            result.get("status") == "ok"
+            and result.get("optimizer_method") in {"oc", "toss", "sko"}
+            and workflow.get("optimizer_status") == "completed"
+            and workflow.get("displacement_status") == "completed"
+            and workflow.get("stress_status") == "completed"
+            and isinstance(final_compliance, int | float)
+            and isinstance(displacement, dict)
+            and isinstance(displacement.get("max_magnitude"), int | float)
+            and _summary_has_rows(nodal_stress)
+            and _summary_has_rows(elemental_stress)
+            and isinstance(optimized_export, dict)
+            and optimized_export.get("status") in {"exported", "exported_with_warnings"}
+        )
+        item["status"] = "passed" if passed else "failed"
+        result_checks.append(item)
+
+    observed_methods = sorted(
+        {item.get("optimizer_method") for item in result_checks if item.get("optimizer_method") in {"oc", "toss", "sko"}}
+    )
+    failed = [item for item in result_checks if item.get("status") != "passed"]
+    check["results"] = result_checks
+    check["observed_methods"] = observed_methods
+    check["status"] = "passed" if not failed and observed_methods == ["oc", "sko", "toss"] else "failed"
+    return check
+
+
 def _check_json_status(name: str, path: Path, expected_statuses: set[str]) -> dict[str, Any]:
     check: dict[str, Any] = {"name": name, "path": str(path), "expected_statuses": sorted(expected_statuses)}
     if not path.exists():
@@ -201,6 +290,11 @@ def run_accuracy_gate(root: Path) -> dict[str, Any]:
     )
     checks.append(_check_online_workflow(root / "z88_assets" / "outputs" / "online_stl_validation_workflow.json"))
     checks.append(
+        _check_structural_method_workflow(
+            root / "z88_assets" / "outputs" / "structural_sample_method_validation.json"
+        )
+    )
+    checks.append(
         _check_json_status(
             "tetgen_simple_cube_gate",
             root / "z88_assets" / "outputs" / "tetgen_probe" / "online_wikimedia_cube" / "tetgen_probe.json",
@@ -230,7 +324,8 @@ def run_accuracy_gate(root: Path) -> dict[str, Any]:
         "checks": checks,
         "notes": [
             "This gate validates confirmed OC fixture compliance and generated H8 voxel workflows.",
-            "TOSS/SKO, large GUI-fixture stress, and general tetra generation remain capability gates, not passed accuracy gates.",
+            "Generated H8 OC/TOSS/SKO workflows are checked on simple mechanical structures.",
+            "Large GUI-fixture stress and general tetra generation remain capability gates, not passed accuracy gates.",
         ],
     }
 

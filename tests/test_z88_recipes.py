@@ -89,12 +89,14 @@ def test_configure_recipe_from_payload_matches_ui_contract(tmp_path: Path) -> No
             "support_box": {"min": [-5.0, -2.0, -1.0], "max": [-4.0, 2.0, 1.0]},
             "load_box": {"min": [4.0, -2.0, -1.0], "max": [5.0, 2.0, 1.0]},
             "force": [0.0, -250.0, 0.0],
+            "optimizer_method": "toss",
             "volume_fraction": 0.5,
         }
     )
 
     config.validate()
     assert config.project_name == "payload_bracket"
+    assert config.optimizer.method == "toss"
     assert config.optimizer.volume_fraction == 0.5
     assert config.loads[0].force == (0.0, -250.0, 0.0)
 

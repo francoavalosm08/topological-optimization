@@ -39,6 +39,20 @@ def test_find_latest_constitutive_law_uses_highest_iteration(tmp_path: Path) -> 
     assert latest.name == "z88mat010.txt"
 
 
+def test_find_latest_constitutive_law_supports_sko_material_folder(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "ConstitutiveLaw").mkdir()
+    sko_material = project / "ConstitutiveLaw_SKO"
+    sko_material.mkdir()
+    (sko_material / "z88mat0.txt").write_text("initial", encoding="utf-8")
+    (sko_material / "z88mat3.txt").write_text("latest", encoding="utf-8")
+
+    latest = find_latest_constitutive_law(project)
+
+    assert latest == sko_material / "z88mat3.txt"
+
+
 def test_build_displacement_postprocess_command_uses_observed_argv(tmp_path: Path) -> None:
     install = _fake_install(tmp_path / "Z88ArionV3")
     project = _native_project(tmp_path / "project")

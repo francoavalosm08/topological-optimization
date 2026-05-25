@@ -196,8 +196,8 @@ Additional online-STL probe evidence:
   failed through both direct STL input and OFF conversion.
 
 Conclusion: this path is geometry-sensitive and remains a probe only. The
-confirmed raw-STL/config writer path is still OC/H8 voxel generation, not
-general tetrahedral generation.
+confirmed raw-STL/config writer path is still OC/TOSS/SKO H8 voxel generation,
+not general tetrahedral generation.
 
 ## `z88marks.txt`
 
@@ -499,9 +499,9 @@ Observed local summaries:
 - `2_Querlenker_OC`: `17220` nodes, 3 components per node, max displacement
   about `0.0767050791` at node `1004`.
 
-## Native OC Voxel Project Writer
+## Native H8 Topology Project Writer
 
-Confidence: `CONFIRMED` for the limited OC/H8 voxel scope.
+Confidence: `CONFIRMED` for the limited OC/TOSS/SKO H8 voxel scope.
 
 Confirmed generation path:
 
@@ -512,7 +512,8 @@ python scripts\z88_generate_native_project.py <config.json> --project-dir <proje
 Confirmed scope:
 
 - Input geometry is voxelized from STL into H8/hexahedral elements.
-- Optimizer is OC only.
+- Optimizer methods `oc`, `toss`, and `sko` are confirmed for the generated H8
+  contract.
 - Region selectors are explicit axis-aligned boxes.
 - Supports and loads are written to `z88i2.txt`.
 - Material uses `r_2.txt`, `z88mat.txt`, and per-element
@@ -544,17 +545,28 @@ x-max/high-y/high-z
 `Z88Arion.ctrl` is required by `z88optopus.exe`; omitting it caused a silent
 optimizer crash before solver logs were written.
 
+Observed generated H8 method mapping:
+
+- `oc`: `z88control.txt` uses `OPTALGORITHM 1`; `Z88Arion.ctrl` uses
+  `OptMethod :SIMP` and `OptAlgorithm :OC`.
+- `toss`: `z88control.txt` uses `OPTALGORITHM 3`; `Z88Arion.ctrl` uses
+  `OptMethod :TOSS_SIMP` and `OptAlgorithm :OC`.
+- `sko`: `z88control.txt` uses `OPTALGORITHM 4`; `Z88Arion.ctrl` uses
+  `OptMethod :SKO` and `OptAlgorithm :OC`.
+
 Current writer status:
 
 - Implemented in `z88_bridge/native_writer.py`.
 - Exposed as `scripts/z88_generate_native_project.py`.
-- Local STL smoke wrote a 45-element native project, ran OC with SICCG,
-  generated displacements, generated stress, and collected JSON summaries.
+- Local structural method matrix wrote 15 native projects across 5 generated
+  mechanical structures and 3 methods, ran OC/TOSS/SKO with SICCG, generated
+  displacements, generated stress, exported optimized STL, and collected JSON
+  summaries.
 - Tetrahedral/native GUI project writing remains `DEFERRED`.
 
 ## Stress / Von Mises Outputs
 
-Confidence: `CONFIRMED` for the generated OC/H8 voxel scope.
+Confidence: `CONFIRMED` for the generated OC/TOSS/SKO H8 voxel scope.
 
 Current evidence:
 
@@ -567,8 +579,8 @@ Current evidence:
 - On the copied `1_Balken_OC` OC fixture, that `z88rTOSS.exe -SIG` probe
   crashed with Windows access violation return code `3221225477` after creating
   a partial element-energy output and an empty nodal-stress output.
-- On the generated 45-element OC/H8 smoke project, this command completed and
-  wrote non-empty nodal and element stress files:
+- On generated OC/TOSS/SKO H8 smoke projects, this command completed and wrote
+  non-empty nodal and element stress files:
 
 ```text
 z88rTOSS.exe -SIG -SICCG Knotenspannungen\Knot_final.txt ConstitutiveLaw\z88mat1.txt z88i1.txt z88i2.txt Stresses_ELE\Stress_ele_final.txt tmp\ElementEnergy_final.txt
@@ -599,6 +611,6 @@ Parser status: `OBSERVED`.
 - `scripts/z88_generate_stress.py` runs the confirmed stress postprocess.
 - `z88_bridge/results.py` parses counted nodal and element scalar stress files
   into `stress.nodal` and `stress.elemental` summaries.
-- The command is confirmed for the generated OC/H8 writer path. It is not yet
+- The command is confirmed for the generated OC/TOSS/SKO H8 writer path. It is not yet
   reliable on the larger copied GUI-generated OC fixtures, so those should keep
   stress generation optional.

@@ -15,7 +15,7 @@ from z88_bridge import run_best_available_backend, write_crash_report
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("project_dir", help="Run folder, staged native folder, or GUI-generated OC folder")
+    parser.add_argument("project_dir", help="Run folder, staged native folder, or generated Z88 optimizer folder")
     parser.add_argument("--install-root", help="Override Z88Arion install root")
     parser.add_argument("--solver", default="siccg", help="Solver mode. Default: siccg")
     parser.add_argument("--optimizer-timeout", type=float, default=900.0)
@@ -24,7 +24,7 @@ def main() -> int:
     parser.add_argument(
         "--generate-stress",
         action="store_true",
-        help="Generate stress output when the project is a wrapper-generated OC/H8 project",
+        help="Generate stress output when the project is a wrapper-generated OC/TOSS/SKO H8 project",
     )
     parser.add_argument("--skip-optimizer", action="store_true")
     parser.add_argument("--skip-displacements", action="store_true")

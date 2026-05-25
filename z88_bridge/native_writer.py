@@ -1,4 +1,4 @@
-"""Generate confirmed OC-native Z88 project folders from voxelized STL input."""
+"""Generate confirmed native Z88 project folders from voxelized STL input."""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -37,11 +37,32 @@ z88rTOSS.exe -TSKO -SICCG
 z88r_opt.exe -OPTU -SICCG
 z88r_opt.exe -SIGN -SICCG
 """
+NATIVE_TOPOLOGY_METHODS = {
+    "oc": {
+        "control_algorithm": 1,
+        "ctrl_method": "SIMP",
+        "ctrl_algorithm": "OC",
+    },
+    "toss": {
+        "control_algorithm": 3,
+        "ctrl_method": "TOSS_SIMP",
+        "ctrl_algorithm": "OC",
+    },
+    "sko": {
+        "control_algorithm": 4,
+        "ctrl_method": "SKO",
+        "ctrl_algorithm": "OC",
+    },
+}
 
 
 @dataclass(frozen=True)
 class NativeOCProjectWriteResult:
     project_dir: str
+    optimizer_method: str
+    z88_control_algorithm: int
+    z88_ctrl_method: str
+    z88_ctrl_algorithm: str
     node_count: int
     element_count: int
     boundary_condition_count: int
@@ -77,16 +98,16 @@ def write_native_oc_project(
     install_root: str | Path | None = None,
     max_elements: int = 200_000,
 ) -> NativeOCProjectWriteResult:
-    """Voxelize `config.input_stl` and write a confirmed OC project folder.
+    """Voxelize `config.input_stl` and write a confirmed native project folder.
 
-    Scope is intentionally narrow: hexahedral voxel meshes, OC optimization,
+    Scope is intentionally narrow: hexahedral voxel meshes, OC/TOSS/SKO
+    optimization through the observed Z88Arion controller contract,
     box-selected supports/loads/passive-solid regions, and SI-derived material
     scaling for the configured length unit. Tetrahedral/native GUI writers
     remain outside this confirmed contract.
     """
     config.validate()
-    if config.optimizer.method.lower() != "oc":
-        raise ValueError("native project generation is currently confirmed for optimizer.method='oc' only")
+    _native_topology_method(config.optimizer.method)
     grid = voxelize_stl(config.input_stl, config.voxel_pitch, max_elements=max_elements)
     return write_native_oc_project_from_grid(config, grid, project_dir, install_root=install_root)
 
@@ -98,10 +119,9 @@ def write_native_oc_project_from_grid(
     *,
     install_root: str | Path | None = None,
 ) -> NativeOCProjectWriteResult:
-    """Write a Z88 OC folder from an already voxelized grid."""
+    """Write a Z88 native topology project folder from an already voxelized grid."""
     config.validate(require_input_exists=False)
-    if config.optimizer.method.lower() != "oc":
-        raise ValueError("native project generation is currently confirmed for optimizer.method='oc' only")
+    method = _native_topology_method(config.optimizer.method)
     if grid.pitch <= 0:
         raise ValueError("voxel grid pitch must be positive")
     if not np.any(grid.solid):
@@ -153,6 +173,10 @@ def write_native_oc_project_from_grid(
     warnings = _project_warnings(config, fixed_element_ids)
     result = NativeOCProjectWriteResult(
         project_dir=str(project_dir),
+        optimizer_method=str(config.optimizer.method).lower(),
+        z88_control_algorithm=int(method["control_algorithm"]),
+        z88_ctrl_method=str(method["ctrl_method"]),
+        z88_ctrl_algorithm=str(method["ctrl_algorithm"]),
         node_count=len(mesh.nodes),
         element_count=len(mesh.elements),
         boundary_condition_count=len(boundary_rows),
@@ -291,6 +315,7 @@ def _write_material_files(project_dir: Path, element_count: int, young_modulus: 
 
 def _write_z88control(path: Path, config: Z88RunConfig) -> None:
     volume_percent = config.optimizer.volume_fraction * 100.0
+    method = _native_topology_method(config.optimizer.method)
     lines = f"""DYNAMIC START
 *-------------------------------------------------------------------------------
 Z88Arion V3.0
@@ -317,7 +342,7 @@ TOSOLVER START
    ALPHA                        1.000000E-004
    OMEGA                        1.00
    OPTMAXIT                     {config.optimizer.max_iterations}
-   OPTALGORITHM                 1
+   OPTALGORITHM                 {method["control_algorithm"]}
    OPTMETHOD                    1
    OPTFILTERTYPE                1
    OPTFILTERVERS                1
@@ -361,6 +386,7 @@ DYNAMIC END
 
 def _write_z88arion_ctrl(path: Path, config: Z88RunConfig) -> None:
     volume_percent = config.optimizer.volume_fraction * 100.0
+    method = _native_topology_method(config.optimizer.method)
     lines = f"""XXXXXXXXXXXXXXXX                                        XXXXXXXXXXXXXXXX
  XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
   XX                                                                XX
@@ -382,12 +408,12 @@ XXXXXXXXXXXXXXXX                                         XXXXXXXXXXXXXXX
 ------------------------------------------------------------------------
  Topologieoptimierung                             topology optimization
 ------------------------------------------------------------------------
- PARAMETER OPT START
-   Optimierungsmethode                      = OptMethod    :SIMP
+PARAMETER OPT START
+   Optimierungsmethode                      = OptMethod    :{method["ctrl_method"]}
    Art des Abbruchkriteriums                = OptEpsTyp    :Crel
    Abbruchkriterium (Wert)                  = OptEps       : {config.optimizer.convergence_tolerance:+.7E}
    Maximale Anzahl Iterationen              = OptMaxIt     :{config.optimizer.max_iterations}
-   Optimierungsalgorithmus                  = OptAlgorithm :OC
+   Optimierungsalgorithmus                  = OptAlgorithm :{method["ctrl_algorithm"]}
    Enthinterschneidungsstufe                = OptMinSt     :0
    Enthinterschneidungsrate                 = OptEntRate   :0.000000E+00
    Entfromungsrichtung x                    = OptEntX      :0.000000E+00
@@ -435,6 +461,17 @@ XXXXXXXXXXXXXXXX                                         XXXXXXXXXXXXXXX
  PARAMETER SKO END
 """
     path.write_text(lines, encoding="utf-8")
+
+
+def _native_topology_method(method: str) -> dict[str, str | int]:
+    key = method.lower()
+    try:
+        return NATIVE_TOPOLOGY_METHODS[key]
+    except KeyError as exc:
+        choices = ", ".join(sorted(NATIVE_TOPOLOGY_METHODS))
+        raise ValueError(
+            f"native H8 project generation is confirmed for optimizer.method in {{{choices}}}, got {method!r}"
+        ) from exc
 
 
 def _write_runtime_files(

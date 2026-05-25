@@ -24,6 +24,7 @@ from .backend import (
     BackendRunResult,
     ensure_guided_handoff,
     find_generated_oc_project_dir,
+    find_generated_topology_project_dir,
     run_best_available_backend,
 )
 from .capabilities import Z88Capability, current_capabilities, summarize_native_project_capability
@@ -91,6 +92,7 @@ from .results import (
     inventory_snapshot_folder,
     parse_counted_scalar_field_summary,
     parse_displacement_summary,
+    parse_youngs_modulus_summary,
     parse_scalar_field_summary,
     parse_scalar_history,
     write_native_results,
@@ -115,10 +117,11 @@ from .recipes import (
     load_safety_presets,
     suggest_end_boxes_from_stl,
 )
-from .samples import SAMPLE_ASSETS, SampleAsset, generate_sample_assets
+from .samples import SAMPLE_ASSETS, STRUCTURAL_SAMPLE_ASSETS, SampleAsset, generate_sample_assets, generate_structural_sample_assets
 from .workflow import (
     GeneratedOCWorkflowResult,
     run_generated_oc_workflow,
+    run_generated_topology_workflow,
     supports_automatic_stl_export,
     supports_automatic_stress_postprocess,
 )
@@ -153,6 +156,7 @@ __all__ = [
     "RecipeInputError",
     "RingWingStrutInputs",
     "SAMPLE_ASSETS",
+    "STRUCTURAL_SAMPLE_ASSETS",
     "ScalarHistory",
     "ScalarFieldSummary",
     "SampleAsset",
@@ -194,8 +198,10 @@ __all__ = [
     "ensure_guided_handoff",
     "export_optimized_stl_from_generated_project",
     "find_generated_oc_project_dir",
+    "find_generated_topology_project_dir",
     "find_latest_constitutive_law",
     "generate_sample_assets",
+    "generate_structural_sample_assets",
     "inspect_stl_geometry",
     "inventory_files",
     "inventory_snapshot_folder",
@@ -203,6 +209,7 @@ __all__ = [
     "load_safety_presets",
     "normalize_solver_arg",
     "parse_displacement_summary",
+    "parse_youngs_modulus_summary",
     "parse_counted_scalar_field_summary",
     "parse_scalar_field_values",
     "parse_scalar_field_summary",
@@ -218,6 +225,7 @@ __all__ = [
     "run_displacement_postprocess",
     "run_stress_postprocess",
     "run_generated_oc_workflow",
+    "run_generated_topology_workflow",
     "run_generated_optimizer_project",
     "run_best_available_backend",
     "run_packaging_preflight",

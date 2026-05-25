@@ -130,12 +130,120 @@ SAMPLE_ASSETS: tuple[SampleAsset, ...] = (
 )
 
 
+STRUCTURAL_SAMPLE_ASSETS: tuple[SampleAsset, ...] = (
+    SampleAsset(
+        name="cantilever_beam",
+        filename="cantilever_beam.stl",
+        recipe="generic_bracket",
+        description="Straight cantilever beam with one fixed end and one loaded end.",
+        extents=(30.0, 4.0, 4.0),
+        payload={
+            "recipe": "generic_bracket",
+            "project_name": "structural_cantilever_beam",
+            "support_box": {"min": [-15.0, -2.0, -2.0], "max": [-12.0, 2.0, 2.0]},
+            "load_box": {"min": [12.0, -2.0, -2.0], "max": [15.0, 2.0, 2.0]},
+            "force": [0.0, -100.0, 0.0],
+            "material": "al_6061_t6",
+            "safety_preset": "consumer_drone",
+            "voxel_pitch": 2.0,
+            "volume_fraction": 1.0,
+            "max_iterations": 1,
+        },
+    ),
+    SampleAsset(
+        name="l_bracket",
+        filename="l_bracket.stl",
+        recipe="generic_bracket",
+        description="Voxel L-bracket with a wall leg and a horizontal loaded arm.",
+        extents=(24.0, 5.0, 18.0),
+        payload={
+            "recipe": "generic_bracket",
+            "project_name": "structural_l_bracket",
+            "support_box": {"min": [-12.0, -2.5, -2.0], "max": [-9.0, 2.5, 16.0]},
+            "load_box": {"min": [9.0, -2.5, -2.0], "max": [12.0, 2.5, 2.0]},
+            "force": [0.0, -120.0, 0.0],
+            "material": "al_6061_t6",
+            "safety_preset": "consumer_drone",
+            "voxel_pitch": 2.0,
+            "volume_fraction": 1.0,
+            "max_iterations": 1,
+        },
+    ),
+    SampleAsset(
+        name="bridge_beam",
+        filename="bridge_beam.stl",
+        recipe="generic_bracket",
+        description="Bridge-style beam with enlarged end pads and a center load pad.",
+        extents=(36.0, 6.0, 5.0),
+        payload={
+            "recipe": "generic_bracket",
+            "project_name": "structural_bridge_beam",
+            "support_box": {"min": [-18.0, -3.0, -2.5], "max": [-14.0, 3.0, 2.5]},
+            "load_box": {"min": [-2.5, -3.0, -2.5], "max": [2.5, 3.0, 2.5]},
+            "force": [0.0, -150.0, 0.0],
+            "material": "al_6061_t6",
+            "safety_preset": "consumer_drone",
+            "voxel_pitch": 2.0,
+            "volume_fraction": 1.0,
+            "max_iterations": 1,
+        },
+    ),
+    SampleAsset(
+        name="gusset_bracket",
+        filename="gusset_bracket.stl",
+        recipe="generic_bracket",
+        description="Triangular gusset-style bracket for diagonal load-path checks.",
+        extents=(24.0, 5.0, 18.0),
+        payload={
+            "recipe": "generic_bracket",
+            "project_name": "structural_gusset_bracket",
+            "support_box": {"min": [-12.0, -2.5, -2.0], "max": [-9.0, 2.5, 16.0]},
+            "load_box": {"min": [8.0, -2.5, -2.0], "max": [12.0, 2.5, 3.0]},
+            "force": [0.0, -125.0, 0.0],
+            "material": "al_6061_t6",
+            "safety_preset": "consumer_drone",
+            "voxel_pitch": 2.5,
+            "volume_fraction": 1.0,
+            "max_iterations": 1,
+        },
+    ),
+    SampleAsset(
+        name="plate_with_hole",
+        filename="plate_with_hole.stl",
+        recipe="generic_bracket",
+        description="Flat plate with a center hole to exercise stress concentration behavior.",
+        extents=(28.0, 16.0, 4.0),
+        payload={
+            "recipe": "generic_bracket",
+            "project_name": "structural_plate_with_hole",
+            "support_box": {"min": [-14.0, -8.0, -2.0], "max": [-11.0, 8.0, 2.0]},
+            "load_box": {"min": [11.0, -8.0, -2.0], "max": [14.0, 8.0, 2.0]},
+            "force": [0.0, -100.0, 0.0],
+            "material": "al_6061_t6",
+            "safety_preset": "consumer_drone",
+            "voxel_pitch": 2.0,
+            "volume_fraction": 1.0,
+            "max_iterations": 1,
+        },
+    ),
+)
+
+
 def generate_sample_assets(output_dir: str | Path) -> dict[str, Any]:
     """Write small watertight STL samples and a catalog JSON file."""
+    return _generate_assets(SAMPLE_ASSETS, output_dir)
+
+
+def generate_structural_sample_assets(output_dir: str | Path) -> dict[str, Any]:
+    """Write common mechanical structure STL samples and a catalog JSON file."""
+    return _generate_assets(STRUCTURAL_SAMPLE_ASSETS, output_dir)
+
+
+def _generate_assets(assets: tuple[SampleAsset, ...], output_dir: str | Path) -> dict[str, Any]:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     catalog: list[dict[str, Any]] = []
-    for sample in SAMPLE_ASSETS:
+    for sample in assets:
         stl_path = output_dir / sample.filename
         mesh = _sample_mesh(sample)
         mesh.export(stl_path)
@@ -195,6 +303,26 @@ def _sample_mesh(sample: SampleAsset) -> trimesh.Trimesh:
                 ((5.0, 3.0, 3.0), (12.5, 0.0, 0.0)),
             ]
         )
+    if sample.name == "l_bracket":
+        return _combine_boxes(
+            [
+                ((24.0, 5.0, 4.0), (0.0, 0.0, 0.0)),
+                ((5.0, 5.0, 18.0), (-9.5, 0.0, 7.0)),
+            ]
+        )
+    if sample.name == "bridge_beam":
+        return _combine_boxes(
+            [
+                ((36.0, 3.0, 3.0), (0.0, 0.0, 0.0)),
+                ((5.0, 6.0, 5.0), (-15.5, 0.0, 0.0)),
+                ((5.0, 6.0, 5.0), (15.5, 0.0, 0.0)),
+                ((6.0, 5.0, 4.0), (0.0, 0.0, 0.5)),
+            ]
+        )
+    if sample.name == "gusset_bracket":
+        return _gusset_bracket_mesh()
+    if sample.name == "plate_with_hole":
+        return _plate_with_hole_mesh()
     return trimesh.creation.box(extents=sample.extents)
 
 
@@ -238,6 +366,42 @@ def _voxel_box_union(
             & (lo[2] <= zgrid) & (zgrid <= hi[2])
         )
     return solid, lower.astype(float), pitch
+
+
+def _gusset_bracket_mesh(*, pitch: float = 1.0) -> trimesh.Trimesh:
+    lower = np.asarray([-12.0, -2.5, -2.0], dtype=float)
+    upper = np.asarray([12.0, 2.5, 16.0], dtype=float)
+    dims = np.ceil((upper - lower) / pitch).astype(int)
+    solid = np.zeros(tuple(int(value) for value in dims), dtype=bool)
+    xs = lower[0] + (np.arange(dims[0]) + 0.5) * pitch
+    ys = lower[1] + (np.arange(dims[1]) + 0.5) * pitch
+    zs = lower[2] + (np.arange(dims[2]) + 0.5) * pitch
+    xgrid, ygrid, zgrid = np.meshgrid(xs, ys, zs, indexing="ij")
+
+    base_arm = (-2.0 <= zgrid) & (zgrid <= 2.0)
+    wall_arm = (-12.0 <= xgrid) & (xgrid <= -7.0)
+    diagonal = zgrid <= (-0.75 * xgrid + 9.0)
+    solid |= base_arm | wall_arm | diagonal
+    mesh = _surface_mesh_from_voxels(solid, origin=lower, pitch=pitch)
+    if not mesh.is_watertight:
+        raise ValueError("generated gusset bracket is not watertight")
+    return mesh
+
+
+def _plate_with_hole_mesh(*, pitch: float = 1.0) -> trimesh.Trimesh:
+    lower = np.asarray([-14.0, -8.0, -2.0], dtype=float)
+    upper = np.asarray([14.0, 8.0, 2.0], dtype=float)
+    dims = np.ceil((upper - lower) / pitch).astype(int)
+    xs = lower[0] + (np.arange(dims[0]) + 0.5) * pitch
+    ys = lower[1] + (np.arange(dims[1]) + 0.5) * pitch
+    zs = lower[2] + (np.arange(dims[2]) + 0.5) * pitch
+    xgrid, ygrid, _zgrid = np.meshgrid(xs, ys, zs, indexing="ij")
+    radius = 3.5
+    solid = (xgrid * xgrid + ygrid * ygrid) >= radius * radius
+    mesh = _surface_mesh_from_voxels(solid, origin=lower, pitch=pitch)
+    if not mesh.is_watertight:
+        raise ValueError("generated plate-with-hole is not watertight")
+    return mesh
 
 
 def _surface_mesh_from_voxels(solid: np.ndarray, *, origin: np.ndarray, pitch: float) -> trimesh.Trimesh:

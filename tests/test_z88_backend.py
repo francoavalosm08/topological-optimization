@@ -9,6 +9,7 @@ from z88_bridge import (
     ScalarHistory,
     ensure_guided_handoff,
     find_generated_oc_project_dir,
+    find_generated_topology_project_dir,
     run_best_available_backend,
 )
 
@@ -55,9 +56,10 @@ def test_find_generated_oc_project_dir_detects_root_and_nested_z88_project(tmp_p
     assert find_generated_oc_project_dir(root_project) == root_project
     assert find_generated_oc_project_dir(run_folder) == nested_project
     assert find_generated_oc_project_dir(tmp_path / "missing") is None
+    assert find_generated_topology_project_dir(run_folder) == nested_project
 
 
-def test_best_available_backend_runs_generated_oc_workflow(tmp_path: Path, monkeypatch) -> None:
+def test_best_available_backend_runs_generated_topology_workflow(tmp_path: Path, monkeypatch) -> None:
     generated = _generated_project(tmp_path / "project")
     called: list[Path] = []
     kwargs_seen: dict[str, object] = {}
@@ -67,12 +69,12 @@ def test_best_available_backend_runs_generated_oc_workflow(tmp_path: Path, monke
         kwargs_seen.update(kwargs)
         return _workflow(Path(project_dir))
 
-    monkeypatch.setattr(backend, "run_generated_oc_workflow", fake_workflow)
+    monkeypatch.setattr(backend, "run_generated_topology_workflow", fake_workflow)
 
     result = run_best_available_backend(generated, generate_stress=True, stress_timeout_s=12.0)
 
     assert result.status == "completed"
-    assert result.mode == "generated_oc"
+    assert result.mode == "generated_topology"
     assert called == [generated.resolve()]
     assert kwargs_seen["generate_stress"] is True
     assert kwargs_seen["stress_timeout_s"] == 12.0

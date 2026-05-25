@@ -10,6 +10,7 @@ from z88_bridge import (
     parse_displacement_summary,
     parse_scalar_field_summary,
     parse_scalar_history,
+    parse_youngs_modulus_summary,
 )
 
 
@@ -83,6 +84,19 @@ def test_parse_scalar_field_summary_streams_two_column_rows(tmp_path: Path) -> N
     assert summary.zero_count == 1
     assert summary.nonzero_count == 2
     assert summary.parse_errors == ()
+
+
+def test_parse_youngs_modulus_summary_supports_sko_value_poisson_rows(tmp_path: Path) -> None:
+    field = tmp_path / "YoungsModulus_SKO_Iteration1.txt"
+    field.write_text("68900 0.33\n60000 0.33\n", encoding="utf-8")
+
+    summary = parse_youngs_modulus_summary(field)
+
+    assert summary.row_count == 2
+    assert summary.min_value == 60000
+    assert summary.max_value == 68900
+    assert summary.min_id == 2
+    assert summary.max_id == 1
 
 
 def test_parse_counted_scalar_field_summary_validates_header_count(tmp_path: Path) -> None:

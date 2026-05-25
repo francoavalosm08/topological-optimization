@@ -91,7 +91,7 @@ try {
         status_code = [int]$response.StatusCode
         has_z88 = $content.Contains("Z88")
         has_generate_samples = $content.Contains("Generate Samples")
-        has_native_project = $content.Contains("Generate Native OC Project")
+        has_native_project = $content.Contains("Generate Native H8 Project")
     }
     if (-not $result.server_smoke.has_z88 -or -not $result.server_smoke.has_generate_samples) {
         throw "Packaged server responded but did not include expected Z88 UI controls"

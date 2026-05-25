@@ -55,7 +55,7 @@ from z88_bridge import (
     load_material_presets,
     load_safety_presets,
     run_best_available_backend,
-    run_generated_oc_workflow,
+    run_generated_topology_workflow,
     suggest_end_boxes_from_stl,
     write_native_oc_project,
 )
@@ -123,6 +123,7 @@ class Z88RecipeConfigureRequest(BaseModel):
     project_name: str | None = None
     material: str | None = None
     safety_preset: str = "consumer_drone"
+    optimizer_method: str = "oc"
     support_box: Z88BoxRequest | None = None
     load_box: Z88BoxRequest | None = None
     frame_support_box: Z88BoxRequest | None = None
@@ -592,7 +593,7 @@ def z88_generate_native_project(req: Z88NativeProjectGenerateRequest):
             "write": write_result.to_dict(),
         }
         if req.run_workflow:
-            workflow = run_generated_oc_workflow(
+            workflow = run_generated_topology_workflow(
                 write_result.project_dir,
                 install_root=req.install_root,
                 solver=req.solver,

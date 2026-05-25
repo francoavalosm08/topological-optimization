@@ -1,4 +1,4 @@
-"""Run the confirmed GUI-generated OC Z88 workflow end to end."""
+"""Run the confirmed generated Z88 topology workflow end to end."""
 from __future__ import annotations
 
 import argparse
@@ -10,12 +10,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from z88_bridge import run_generated_oc_workflow
+from z88_bridge import run_generated_topology_workflow
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("project_dir", help="Folder containing GUI-generated OC optimizer files")
+    parser.add_argument("project_dir", help="Folder containing generated Z88 optimizer files")
     parser.add_argument("--install-root", help="Override Z88Arion install root")
     parser.add_argument("--solver", default="siccg", help="Solver mode patched into generated files")
     parser.add_argument("--optimizer-timeout", type=float, default=900.0)
@@ -39,7 +39,7 @@ def main() -> int:
     parser.add_argument("--verbose", action="store_true", help="Print full workflow JSON")
     args = parser.parse_args()
 
-    result = run_generated_oc_workflow(
+    result = run_generated_topology_workflow(
         args.project_dir,
         install_root=args.install_root,
         solver=args.solver,

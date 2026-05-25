@@ -30,13 +30,13 @@ def current_capabilities() -> dict[str, dict[str, Any]]:
     """Return the currently proven automation status by method."""
     capabilities = (
         Z88Capability(
-            name="oc_h8_generated",
+            name="generated_h8_topology",
             status="confirmed",
-            detail="Generated H8 voxel projects can run through the SICCG OC workflow.",
+            detail="Generated H8 voxel projects can run OC, TOSS, and SKO through the SICCG workflow.",
             evidence=(
-                "native OC/H8 writer smoke",
-                "generated OC workflow smoke",
-                "representative sample API/native writer tests",
+                "structural sample OC/TOSS/SKO method matrix",
+                "native H8 writer tests",
+                "generated topology workflow tests",
             ),
         ),
         Z88Capability(
@@ -46,16 +46,16 @@ def current_capabilities() -> dict[str, dict[str, Any]]:
             evidence=("1_Balken_OC replay", "2_Querlenker_OC replay"),
         ),
         Z88Capability(
-            name="toss_native_generation",
+            name="copied_gui_toss_replay",
             status="guided_only",
-            detail="TOSS project generation is not automated because required GUI/intermediate files are not confirmed.",
-            evidence=("seeded z88rTOSS reaches Z88MANAGE.TXT gate",),
+            detail="Copied GUI TOSS fixture replay is not automated because required GUI/intermediate files are not confirmed.",
+            evidence=("seeded z88rTOSS reaches Z88MANAGE.TXT gate on copied pre fixtures",),
         ),
         Z88Capability(
-            name="sko_native_generation",
+            name="copied_gui_sko_replay",
             status="guided_only",
-            detail="SKO project generation is not automated because required GUI/intermediate files are not confirmed.",
-            evidence=("OPTALGORITHM 4 observed in bundled SKO fixture",),
+            detail="Copied GUI SKO fixture replay is not automated; generated H8 SKO is confirmed separately.",
+            evidence=("OPTALGORITHM 4 observed in bundled SKO fixture", "generated H8 SKO method matrix passed"),
         ),
         Z88Capability(
             name="tetrahedral_native_generation",
@@ -87,10 +87,13 @@ def summarize_native_project_capability(project_dir: str | Path) -> dict[str, An
     tosolver = summary.get("control", {}).get("TOSOLVER", {})
     algorithm = tosolver.get("OPTALGORITHM") if isinstance(tosolver, dict) else None
     method = ALGORITHM_NAMES.get(algorithm, "unknown")
-    if method == "oc":
-        status = "confirmed_if_gui_generated_or_h8_writer_output"
+    write_json = Path(project_dir) / "z88_native_project_write.json"
+    if method in {"oc", "toss", "sko"} and write_json.is_file():
+        status = "confirmed_generated_h8"
+    elif method == "oc":
+        status = "confirmed_if_gui_generated"
     elif method in {"toss", "sko"}:
-        status = "guided_only"
+        status = "guided_only_for_copied_gui_fixtures"
     else:
         status = "unknown"
     return {

@@ -32,8 +32,8 @@ def test_z88_preset_endpoints_return_serializable_payloads() -> None:
     assert materials["al_6061_t6"]["young_modulus"] > 0
     assert safety["consumer_drone"] == 1.5
     assert "drone_landing_gear" in recipes
-    assert capabilities["capabilities"]["oc_h8_generated"]["status"] == "confirmed"
-    assert capabilities["capabilities"]["toss_native_generation"]["status"] == "guided_only"
+    assert capabilities["capabilities"]["generated_h8_topology"]["status"] == "confirmed"
+    assert capabilities["capabilities"]["copied_gui_toss_replay"]["status"] == "guided_only"
 
 
 def test_z88_discovery_endpoint_reports_missing_install(tmp_path: Path) -> None:
@@ -247,6 +247,10 @@ def test_z88_native_generate_endpoint_writes_project_and_runs_optional_workflow(
         captured["write_max_elements"] = kwargs["max_elements"]
         return NativeOCProjectWriteResult(
             project_dir=str(project_dir),
+            optimizer_method=run_config.optimizer.method,
+            z88_control_algorithm=1,
+            z88_ctrl_method="SIMP",
+            z88_ctrl_algorithm="OC",
             node_count=8,
             element_count=1,
             boundary_condition_count=7,
@@ -267,14 +271,14 @@ def test_z88_native_generate_endpoint_writes_project_and_runs_optional_workflow(
         def compact_dict(self):
             return {"status": self.status, "stress_status": "completed"}
 
-    def fake_run_generated_oc_workflow(project_dir, **kwargs):
+    def fake_run_generated_topology_workflow(project_dir, **kwargs):
         captured["workflow_project_dir"] = project_dir
         captured["workflow_generate_stress"] = kwargs["generate_stress"]
         captured["workflow_stress_timeout_s"] = kwargs["stress_timeout_s"]
         return FakeWorkflow()
 
     monkeypatch.setattr(api, "write_native_oc_project", fake_write_native_oc_project)
-    monkeypatch.setattr(api, "run_generated_oc_workflow", fake_run_generated_oc_workflow)
+    monkeypatch.setattr(api, "run_generated_topology_workflow", fake_run_generated_topology_workflow)
 
     response = api.z88_generate_native_project(
         api.Z88NativeProjectGenerateRequest(

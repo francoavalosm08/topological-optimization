@@ -8,9 +8,9 @@ from z88_bridge import current_capabilities, summarize_native_project_capability
 def test_current_capabilities_report_confirmed_and_guided_methods() -> None:
     capabilities = current_capabilities()
 
-    assert capabilities["oc_h8_generated"]["status"] == "confirmed"
-    assert capabilities["toss_native_generation"]["status"] == "guided_only"
-    assert capabilities["sko_native_generation"]["status"] == "guided_only"
+    assert capabilities["generated_h8_topology"]["status"] == "confirmed"
+    assert capabilities["copied_gui_toss_replay"]["status"] == "guided_only"
+    assert capabilities["copied_gui_sko_replay"]["status"] == "guided_only"
     assert capabilities["tetrahedral_native_generation"]["status"] == "deferred"
 
 
@@ -26,4 +26,4 @@ def test_summarize_native_project_capability_maps_optalgorithm(tmp_path: Path) -
 
     assert summary["optalgorithm"] == 3
     assert summary["method"] == "toss"
-    assert summary["automation_status"] == "guided_only"
+    assert summary["automation_status"] == "guided_only_for_copied_gui_fixtures"

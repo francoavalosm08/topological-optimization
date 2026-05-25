@@ -17,8 +17,8 @@ unverified format assumptions.
   `scripts/z88_run_generated_optimizer.py`.
 - Current native project parsing covers `z88control.txt`, `z88setsactive.txt`,
   and the `z88structure.txt` header. Current native result parsing covers OC
-  histories, snapshot summaries, displacements, and generated OC/H8 stress
-  summaries.
+  histories, snapshot summaries, displacements, and generated OC/TOSS/SKO H8
+  stress summaries.
 - Current successful generated-optimizer evidence:
   - `1_Balken_OC` was opened in the Z88Arion GUI so native optimizer files were
     generated.
@@ -44,7 +44,7 @@ unverified format assumptions.
   - `z88_bridge/results.py` parses displacement summaries: node count,
     components per node, max magnitude, and max node.
   - `scripts/z88_generate_stress.py` can generate observed nodal and element
-    scalar stress files for the confirmed generated OC/H8 path using
+    scalar stress files for the confirmed generated OC/TOSS/SKO H8 path using
     `z88rTOSS.exe -SIG -SICCG`.
   - `z88_bridge/results.py` parses stress summaries for
     `Knotenspannungen/*.txt` and `Stresses_ELE/*.txt`.
@@ -53,11 +53,11 @@ unverified format assumptions.
     partial energy file and an empty nodal file. The postprocess status now
     reports this as `crashed`.
   - Product behavior decision: automatic stress is supported only for
-    wrapper-generated OC/H8 projects. Other Z88 project types report
+    wrapper-generated OC/TOSS/SKO H8 projects. Other Z88 project types report
     `unsupported` and should use Z88Arion GUI export or later independent
     verification instead of running the unstable headless stress command.
 - Current native writer evidence:
-  - `scripts/z88_generate_native_project.py` generates an OC/H8 voxel project
+  - `scripts/z88_generate_native_project.py` generates an OC/TOSS/SKO H8 voxel project
     from `Z88RunConfig` and STL input.
   - The generated writer uses the confirmed H8 element ordering,
     `Z88Arion.ctrl`, `Z88Arion.pth`, `Z88Arion.fea`, `z88i1.txt`,
@@ -85,15 +85,15 @@ unverified format assumptions.
     become the default raw-STL path.
 - Current backend workflow evidence:
   - `scripts/z88_run_generated_workflow.py` orchestrates the confirmed
-    GUI-generated OC path: optimizer replay, displacement postprocess, and
+    generated Z88 topology path: optimizer replay, displacement postprocess, and
     native result collection.
-  - Wrapper-generated OC/H8 workflows now export a thresholded voxel
+  - Wrapper-generated OC/TOSS/SKO H8 workflows now export a thresholded voxel
     `optimized.stl`, write `mesh_quality.json`, and record
     `z88_optimized_stl_export.json` when final `PhysicalDensity` output is
     available.
   - A copied `1_Balken_OC` GUI-generated folder completed this workflow
     locally in about 50 seconds.
-  - `scripts/z88_run_backend.py` now routes GUI-generated OC folders to the
+  - `scripts/z88_run_backend.py` now routes generated Z88 optimizer folders to the
     confirmed workflow and prepared STL/config folders to guided handoff.
 - Current recipe evidence:
   - Material presets and safety presets exist under `presets/`.
@@ -146,6 +146,19 @@ unverified format assumptions.
   - Workflow status remains `partial` because these are one-iteration smoke
     runs and some optional native histories, such as SIMP convergence, are not
     emitted.
+- Current generated simple-structure method evidence:
+  - `scripts/z88_validate_structural_samples.py` generates deterministic
+    common mechanical test STLs: cantilever beam, L-bracket, bridge beam,
+    gusset bracket, and plate with hole.
+  - The validator can run the generated H8 workflow across `oc`, `toss`, and
+    `sko`.
+  - Current report:
+    `z88_assets/outputs/structural_sample_method_validation.json`,
+    `asset_count=5`, `method_count=3`, `sample_count=15`, `failed_count=0`.
+  - All 15 runs completed optimizer replay, displacement postprocess, stress
+    postprocess, optimized STL export, and mesh QA.
+  - SKO exports can be `exported_with_warnings` on one-iteration smoke runs
+    because thresholded density may split into multiple components.
 - Current accuracy-gate evidence:
   - `scripts/z88_accuracy_gate.py` validates known GUI OC compliance
     references, generated online STL workflow results, and recorded TetGen
@@ -158,11 +171,11 @@ unverified format assumptions.
 - Current UI/API evidence:
   - The FastAPI app exposes Z88 material presets, safety presets, recipe
     metadata, recipe configuration, recipe validation, STL inspection,
-    run-folder preparation, explicit native OC/H8 project generation, backend
+    run-folder preparation, explicit native OC/TOSS/SKO H8 project generation, backend
     execution, and native result collection.
   - The browser UI has a Z88 workflow panel for recipe payload editing,
     STL bounds inspection, region-box payload editing, run-folder preparation,
-    native OC/H8 generation, optional stress generation, and backend/guided
+    native OC/TOSS/SKO H8 generation, optional stress generation, and backend/guided
     handoff execution.
   - Step 7 implementation scope: the browser UI now includes a visual
     bounding-box slab picker. It uses inspected STL bounds, axis/end/thickness
@@ -206,15 +219,18 @@ unverified format assumptions.
     call patterns.
   - Seeded `z88rTOSS.exe -t -siccg` and `z88rTOSS.exe -c -siccg` reach the next
     missing project-file gate: `Z88MANAGE.TXT`.
-- Current TOSS/SKO gate evidence:
+- Current copied-fixture TOSS/SKO gate evidence:
   - `5_Winkelhalter_TOSS` probe evidence is preserved under
     `z88_assets/outputs/headless_probe_toss_gate/probe_results.json`.
   - TOSS has visible usage help once `Z88.DYN` is seeded, but candidate
     `-t -siccg` and `-c -siccg` runs stop at missing `Z88MANAGE.TXT`.
   - `7_Balken_SKO` probe evidence is preserved under
     `z88_assets/outputs/headless_probe_sko_gate/probe_results.json`.
-  - SKO currently exits with Windows code `3221225781` without useful output,
-    so SKO headless execution is not proven.
+  - SKO currently exits with Windows code `3221225781` without useful output
+    when run directly from copied pre fixtures, so copied-fixture SKO replay is
+    not proven.
+  - This does not apply to wrapper-generated H8 SKO, which is confirmed by the
+    structural sample method matrix.
 - Current converter probe evidence:
   - `z88ag2oi.exe` appears to be the Arion-to-optimizer-input converter.
   - It accepts language/console/SIMCASE-style args such as `2 1 384`.
@@ -413,15 +429,16 @@ Next Phase C validation:
 1. Keep `1_Balken_OC` and `2_Querlenker_OC` as confirmed generated-project
    replay fixtures.
 2. Use SICCG as the default local solver patch.
-3. Continue probing TOSS/SKO separately because the confirmed path is currently
-   OC-specific.
+3. Continue keeping copied GUI TOSS/SKO fixtures separate from the generated
+   H8 path. Generated H8 TOSS/SKO is now confirmed; copied pre-fixture
+   replay still needs GUI/intermediate state.
 
 ## Phase D: Native Result Pipeline
 
 Goal: parse real Z88 post-run outputs into structured JSON.
 
 Status: complete for the confirmed GUI-generated OC scalar/displacement scope
-and the generated OC/H8 stress scope.
+and the generated OC/TOSS/SKO H8 stress scope.
 
 Coding steps:
 
@@ -437,7 +454,7 @@ Coding steps:
    `YoungsModulus/` without dumping large arrays into JSON.
 6. Current implemented scope: final displacement generation and summary parsing.
 7. Current implemented scope: stress generation with `z88rTOSS.exe -SIG` and
-   counted scalar stress parsing for generated OC/H8 projects.
+   counted scalar stress parsing for generated OC/TOSS/SKO H8 projects.
 8. Parse by explicit node or element ID where IDs exist, never row position
    alone for field data.
 9. Add `warnings` and `parse_errors` arrays.
@@ -474,7 +491,7 @@ Exit gate:
   inventories.
 - Current status: both fixtures also produce displacement summaries after
   running `scripts/z88_generate_displacements.py`.
-- Current status: generated OC/H8 STL projects produce nodal and element stress
+- Current status: generated OC/TOSS/SKO H8 STL projects produce nodal and element stress
   summaries after running `scripts/z88_generate_stress.py` or
   `scripts/z88_generate_native_project.py --run-workflow --generate-stress`.
 - Current limitation: the same stress command is not reliable on the larger
@@ -485,7 +502,7 @@ Exit gate:
 Goal: generate Z88 project files from our config only after input/output formats
 are sufficiently confirmed.
 
-Status: complete for the limited OC/H8 voxel writer. Tetrahedral, TOSS/SKO, and
+Status: complete for the limited OC/TOSS/SKO H8 voxel writer. Tetrahedral and
 full Z88Arion GUI-project generation remain deferred.
 
 Coding steps:
@@ -521,28 +538,31 @@ Bug and crash risks:
 
 Exit gate:
 
-- A generated OC project opens in Z88Arion and displays expected setup.
+- A generated OC/TOSS/SKO H8 project opens in Z88Arion and displays expected setup.
 - Manual run of generated project produces plausible output and parseable
   result.
-- Current status: local generated OC/H8 project runs headlessly with SICCG and
-  produces parseable compliance, displacement, and stress summaries.
+- Current status: local generated OC/TOSS/SKO H8 projects run headlessly with
+  SICCG and produce parseable compliance, displacement, and stress summaries.
+- Current evidence: `z88_assets/outputs/structural_sample_method_validation.json`
+  records 15 generated simple-structure runs across 5 assets and 3 methods with
+  `failed_count=0`.
 
 ## Phase F: Backend End-To-End Workflow
 
 Goal: one backend command takes a config or staged project through the best
 available Z88 workflow.
 
-Status: complete for the confirmed generated-OC path and guided handoff fallback.
+Status: complete for the confirmed generated topology path and guided handoff fallback.
 
 Coding steps:
 
 1. Current implemented scope: `scripts/z88_run_backend.py`.
-2. Current implemented scope: if the input is a GUI-generated OC optimizer
+2. Current implemented scope: if the input is a generated Z88 optimizer
    folder, call the proven `z88optopus` replay path.
 3. Current implemented scope: `scripts/z88_generate_native_project.py` can
    produce the generated project before calling the confirmed workflow.
 4. Current implemented scope: `POST /z88/native/generate_project` exposes that
-   same native OC/H8 generation path to the API, with optional immediate
+   same native OC/TOSS/SKO H8 generation path to the API, with optional immediate
    workflow execution and opt-in stress generation.
 5. If headless is not confirmed for the input, print guided handoff steps and
    collect the user-provided post folder or exported STL path.
@@ -570,9 +590,9 @@ Exit gate:
 - One repeatable command produces either optimized STL/report or a clear guided
   handoff state with no hidden assumptions.
 - Current status: `scripts/z88_run_generated_workflow.py` satisfies this for
-  GUI-generated OC project folders and generated OC/H8 native projects.
+  generated Z88 project folders and generated OC/TOSS/SKO H8 native projects.
 - Current status: `scripts/z88_run_backend.py` is the preferred entry point
-  because it runs the generated-OC path when possible and otherwise writes a
+  because it runs the generated topology path when possible and otherwise writes a
   guided handoff result.
 - Current status: raw STL/config native generation is handled explicitly by
   `scripts/z88_generate_native_project.py` and
@@ -628,8 +648,8 @@ Exit gate:
 - Current status: all five planned recipes can prepare run folders from explicit
   boxes.
 - Current status: those recipe configs can now be fed into the explicit native
-  OC/H8 generation path when the selected method is `oc` and the STL can be
-  voxelized within the element limit.
+  OC/TOSS/SKO H8 generation path when the STL can be voxelized within the
+  element limit.
 - Current status: all five generated sample recipes validate through config
   generation, STL inspection, and native OC/H8 project writing with
   `failed_count=0`.
@@ -657,7 +677,7 @@ Coding steps:
    - `POST /z88/native/collect`
 3. Current implemented scope: browser Z88 workflow panel for editing recipe
    payload JSON, inspecting STL bounds, validating payloads, preparing run
-   folders, generating native OC/H8 projects, toggling optional stress
+   folders, generating native OC/TOSS/SKO H8 projects, toggling optional stress
    generation, and running the best-available backend.
 4. Re-evaluate PySide6/PyVista only if browser UI cannot handle region picking
    or result visualization.
@@ -681,7 +701,7 @@ Exit gate:
 
 - User can complete guided or automated Z88 workflow without editing Python.
 - Current status: user can configure/prepare Z88 recipe runs and trigger the
-  native OC/H8 generation path or backend/guided handoff through the browser
+  native OC/TOSS/SKO H8 generation path or backend/guided handoff through the browser
   UI. Detailed geometric region picking is still explicit-coordinate based.
 
 ## Phase I: Packaging

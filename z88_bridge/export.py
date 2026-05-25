@@ -1,4 +1,4 @@
-"""Export generated OC/H8 density results to STL plus mesh QA."""
+"""Export generated H8 topology density results to STL plus mesh QA."""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -53,8 +53,8 @@ def export_optimized_stl_from_generated_project(
 ) -> OptimizedStlExportResult:
     """Export a thresholded H8 density field to `optimized.stl`.
 
-    This is intentionally scoped to wrapper-generated OC/H8 projects. It does
-    not attempt to export native Z88Arion tetra/TOSS/SKO geometry.
+    This is intentionally scoped to wrapper-generated OC/TOSS/SKO H8 projects.
+    It does not attempt to export native Z88Arion tetrahedral geometry.
     """
     project_dir = Path(project_dir).resolve()
     threshold_value = _configured_iso_threshold(project_dir) if threshold is None else float(threshold)

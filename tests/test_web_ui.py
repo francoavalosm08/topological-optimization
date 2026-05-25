@@ -23,7 +23,7 @@ def test_web_ui_exposes_region_box_helper() -> None:
     assert "Visual Box Picker" in html
     assert "applyZ88VisualSlab" in html
     assert "z88BoxPreview" in html
-    assert "generated OC/H8 only" in html
+    assert "generated OC/TOSS/SKO H8 only" in html
     assert "optimized.stl" in html
     assert "mesh_quality.json" in html
 

@@ -62,7 +62,8 @@ scripts/     — runnable entry points
   z88_headless_probe.py   - captures binary help/cwd execution behavior
   z88_collect_results.py  - collects exported STL and writes mesh/report JSON
   z88_recipe.py           - creates Z88 run configs/folders from explicit-box recipes
-  z88_run_backend.py      - runs generated-OC replay or writes guided handoff state
+  z88_run_backend.py      - runs generated Z88 topology replay or writes guided handoff state
+  z88_validate_structural_samples.py - validates generated cantilever/bracket/plate STLs across OC/TOSS/SKO
   z88_packaging_preflight.py - checks local packaging/deployment readiness
 tests/       — pytest gates
   test_gradient.py    — finite-difference check on dc/dx (2D)

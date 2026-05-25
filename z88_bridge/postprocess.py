@@ -61,17 +61,24 @@ class Z88StressPostprocessRunResult:
 
 
 def find_latest_constitutive_law(project_dir: str | Path) -> Path:
-    """Return the highest-iteration `ConstitutiveLaw/z88matNNN.txt` file."""
-    folder = Path(project_dir) / "ConstitutiveLaw"
-    if not folder.is_dir():
-        raise FileNotFoundError(f"Missing ConstitutiveLaw folder: {folder}")
+    """Return the highest-iteration material law file from OC/TOSS or SKO outputs."""
+    project_dir = Path(project_dir)
+    folders = (project_dir / "ConstitutiveLaw", project_dir / "ConstitutiveLaw_SKO")
     candidates: list[tuple[int, Path]] = []
-    for path in folder.glob("z88mat*.txt"):
-        match = MATERIAL_ITERATION_RE.match(path.name)
-        if match:
-            candidates.append((int(match.group(1)), path))
+    missing: list[Path] = []
+    for folder in folders:
+        if not folder.is_dir():
+            missing.append(folder)
+            continue
+        for path in folder.glob("z88mat*.txt"):
+            match = MATERIAL_ITERATION_RE.match(path.name)
+            if match:
+                candidates.append((int(match.group(1)), path))
     if not candidates:
-        raise FileNotFoundError(f"No z88matNNN.txt files found in {folder}")
+        searched = ", ".join(str(folder) for folder in folders)
+        if len(missing) == len(folders):
+            raise FileNotFoundError(f"Missing material law folders: {searched}")
+        raise FileNotFoundError(f"No z88matNNN.txt files found in {searched}")
     return max(candidates, key=lambda item: item[0])[1]
 
 

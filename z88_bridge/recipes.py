@@ -500,12 +500,17 @@ def configure_recipe_from_payload(
     material_key = payload.get("material") or _default_material(recipe)
     project_name = payload.get("project_name") or recipe
     volume_fraction = float(payload.get("volume_fraction", _default_volume_fraction(recipe)))
+    optimizer_value = payload.get("optimizer")
+    optimizer_method = payload.get("optimizer_method")
+    if optimizer_method is None:
+        optimizer_method = optimizer_value if isinstance(optimizer_value, str) else "oc"
     common = {
         "units": payload.get("units", "mm"),
         "material_key": material_key,
         "safety_preset": payload.get("safety_preset", "consumer_drone"),
         "project_name": project_name,
         "voxel_pitch": float(payload.get("voxel_pitch", 1.0)),
+        "optimizer_method": optimizer_method,
         "volume_fraction": volume_fraction,
         "max_iterations": int(payload.get("max_iterations", 120)),
         "convergence_tolerance": float(payload.get("convergence_tolerance", 1e-3)),

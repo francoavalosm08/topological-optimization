@@ -49,14 +49,14 @@ Implemented:
 - Final displacement generation with `scripts/z88_generate_displacements.py`
   using the observed `z88rofl.exe -U -SICCG <out> <z88mat> <z88i1> <z88i2>`
   argv contract.
-- Native OC project generation from STL/config with
-  `scripts/z88_generate_native_project.py` for the confirmed H8 voxel scope.
+- Native OC/TOSS/SKO H8 project generation from STL/config with
+  `scripts/z88_generate_native_project.py` for the confirmed voxel scope.
 - Native stress generation with `scripts/z88_generate_stress.py` using the
   observed `z88rTOSS.exe -SIG -SICCG <nodal> <z88mat> <z88i1> <z88i2>
   <element> <energy>` argv contract.
-- End-to-end generated OC workflow orchestration with
+- End-to-end generated OC/TOSS/SKO H8 workflow orchestration with
   `scripts/z88_run_generated_workflow.py`.
-- Automatic optimized STL export and mesh QA for wrapper-generated OC/H8
+- Automatic optimized STL export and mesh QA for wrapper-generated OC/TOSS/SKO H8
   projects. The workflow thresholds the final `PhysicalDensity` field, writes
   `optimized.stl`, writes `mesh_quality.json`, and records
   `z88_optimized_stl_export.json`.
@@ -94,13 +94,13 @@ Not implemented yet:
 
 - Fully automated solver or optimizer execution starting from only the copied
   bundled pre-project files.
-- Native project generation for tetrahedral meshes, TOSS/SKO, or arbitrary
-  Z88Arion GUI intermediate files.
+- Native project generation for tetrahedral meshes or arbitrary Z88Arion GUI
+  intermediate files.
 
 The current proven automated path is a replay path for folders where the
 Z88Arion GUI has already generated native optimizer files such as
 `Z88Arion.pth`, `Z88Arion.fea`, `z88i1.txt`, and `z88i2.txt`, plus a generated
-OC/H8 path for voxelized STL configs.
+OC/TOSS/SKO H8 path for voxelized STL configs.
 
 ## Commands
 
@@ -189,13 +189,12 @@ The final argument to `z88rTOSS.exe -SIG` is an energy output file. Do not point
 it at `Displacements\Displacements_final.txt`; doing that overwrites the
 displacement file.
 
-Automatic stress is intentionally limited to wrapper-generated OC/H8 projects
-that include `z88_native_project_write.json`. Copied GUI-generated folders,
-TOSS/SKO projects, and tetrahedral probes should report `unsupported` for
-automatic stress and should use Z88Arion GUI export or later independent
-verification instead.
+Automatic stress is intentionally limited to wrapper-generated OC/TOSS/SKO H8
+projects that include `z88_native_project_write.json`. Copied GUI-generated
+folders and tetrahedral probes should report `unsupported` for automatic stress
+and should use Z88Arion GUI export or later independent verification instead.
 
-Generate a native OC/H8 project directly from an STL config:
+Generate a native OC/TOSS/SKO H8 project directly from an STL config:
 
 ```powershell
 python scripts/z88_generate_native_project.py path\to\config.json --project-dir runs\z88\my_project\z88_project
@@ -212,9 +211,11 @@ python scripts/z88_generate_native_project.py path\to\config.json `
   --optimizer-timeout 900
 ```
 
+Set the optimizer in `config.json` with `optimizer.method` equal to `oc`,
+`toss`, or `sko`.
+
 Current generated-project limits:
 
-- OC optimizer only.
 - H8/hexahedral voxel mesh only.
 - Explicit box selectors for supports, loads, and passive-solid regions.
 - Material modulus is scaled from Pa to force-per-configured-length-squared;
@@ -227,7 +228,7 @@ Current generated-project limits:
   marginal setup can be adjusted before running Z88.
 - Very low volume fractions can still produce singular Z88 solves even after
   these checks if the remaining design region cannot form a connected load path.
-- Generated OC/H8 workflows now produce `optimized.stl` and `mesh_quality.json`
+- Generated OC/TOSS/SKO H8 workflows now produce `optimized.stl` and `mesh_quality.json`
   automatically when final density output is available. This export is a
   thresholded voxel surface, not Z88Arion's smoothed GUI STL.
 
@@ -274,16 +275,34 @@ Current local result:
   host rate-limit failures and stale Z88 output contamination during repeated
   local gate runs.
 
+Validate generated simple mechanical structures across OC, TOSS, and SKO:
+
+```powershell
+python scripts/z88_validate_structural_samples.py --methods oc,toss,sko --run-workflow --workflow-timeout 180 --output z88_assets\outputs\structural_sample_method_validation.json
+```
+
+Current local result:
+
+- `asset_count`: `5` (`cantilever_beam`, `l_bracket`, `bridge_beam`,
+  `gusset_bracket`, `plate_with_hole`)
+- `method_count`: `3`
+- `sample_count`: `15`
+- `failed_count`: `0`
+- All generated H8 OC/TOSS/SKO runs completed optimizer replay, displacement
+  postprocess, stress postprocess, optimized STL export, and mesh QA. Some SKO
+  exports are `exported_with_warnings` because the thresholded density can split
+  into multiple components on one-iteration smoke settings.
+
 Run the current accuracy evidence gate:
 
 ```powershell
 python scripts/z88_accuracy_gate.py --output z88_assets\outputs\accuracy_gate.json
 ```
 
-Current gate status: `passed` for confirmed GUI OC compliance references and
-the generated H8 online-STL workflows. TOSS/SKO, larger copied-fixture stress,
-and general tetra generation are recorded as capability gates rather than
-passed accuracy gates.
+Current gate status: `passed` for confirmed GUI OC compliance references, the
+generated H8 online-STL workflows, and generated H8 OC/TOSS/SKO simple-structure
+workflows. Larger copied-fixture stress and general tetra generation remain
+capability gates rather than passed accuracy gates.
 
 Probe the installed TetGen path without enabling tetrahedral project writing:
 
@@ -306,10 +325,10 @@ Current TetGen evidence:
   through both direct STL and OFF conversion. Keep tetrahedral generation
   disabled as the default raw-STL path.
 
-Run the confirmed generated OC workflow end to end:
+Run the confirmed generated topology workflow end to end:
 
 ```powershell
-python scripts/z88_run_generated_workflow.py path\to\gui_generated_oc_project --solver siccg
+python scripts/z88_run_generated_workflow.py path\to\generated_z88_project --solver siccg
 ```
 
 Add `--generate-stress` to run the observed stress postprocess after
@@ -336,7 +355,7 @@ python scripts/z88_run_backend.py path\to\run_or_project_folder --solver siccg
 
 Behavior:
 
-- If the folder is a GUI-generated OC project, it runs the confirmed headless
+- If the folder is a generated Z88 optimizer project, it runs the confirmed headless
   workflow.
 - If the folder is only a prepared STL/config run, it writes
   `Z88_GUIDED_BACKEND_HANDOFF.md` and returns `guided_handoff_required`.
@@ -434,14 +453,14 @@ STL path, adjust the recipe payload, and choose one of:
 - **Validate Payload**: run `/z88/recipes/validate`, returning both the config
   and geometry metadata without writing any run folder.
 - **Prepare Run Folder**: create the conservative STL handoff folder.
-- **Generate Native OC Project**: voxelize the STL and write the confirmed
-  OC/H8 native project contract.
+- **Generate Native H8 Project**: voxelize the STL and write the confirmed
+  OC/TOSS/SKO H8 native project contract.
 - **Run / Guide Backend**: run the best available backend for the selected
   project folder, or write a guided handoff when the folder is not runnable.
 
 The **Generate stress output** checkbox is intentionally optional. It is
-confirmed for generated OC/H8 projects, but remains risky on larger copied
-GUI-generated fixtures.
+confirmed for generated OC/TOSS/SKO H8 projects, but remains risky on larger
+copied GUI-generated fixtures.
 
 Generate local sample STLs and load the first sample into the browser panel:
 
@@ -505,7 +524,7 @@ test.
 Current stress/von-Mises status:
 
 - `z88rofl.exe -SIG` is not accepted by the OC solver binary.
-- `z88rTOSS.exe -SIG` is confirmed for generated OC/H8 projects when the final
+- `z88rTOSS.exe -SIG` is confirmed for generated OC/TOSS/SKO H8 projects when the final
   argument is `tmp\ElementEnergy_final.txt`.
 - `z88_bridge/results.py` parses counted scalar summaries from
   `Knotenspannungen\*.txt` and `Stresses_ELE\*.txt`.
@@ -668,21 +687,22 @@ Observed `OPTALGORITHM` values in bundled examples:
 - TOSS examples use `OPTALGORITHM 3`.
 - SKO examples use `OPTALGORITHM 4`.
 
-These observations are useful but not yet sufficient for safe project writing.
-Pre/post OC fixtures now exist, and the remaining writer gate is confirming how
-to regenerate the GUI-only intermediate files from STL/config without manually
-using Z88Arion.
+These observations are sufficient for the wrapper-generated H8 writer because
+that path writes the required optimizer-control files directly. They are still
+not sufficient for arbitrary tetrahedral projects or for regenerating every
+GUI-only intermediate file from copied pre-project fixtures without using
+Z88Arion.
 
 ## Next Integration Gate
 
 The next useful implementation steps are:
 
-1. Run the browser/API native OC generation path on at least one real STL part
+1. Run the browser/API native H8 generation path on at least one real STL part
    with conservative volume fraction and explicit support/load boxes.
 2. Test the five explicit-box recipes on real parts and refine region input
    ergonomics.
-3. Continue investigating TOSS/SKO and tetrahedral native generation as
-   separate gated tracks; do not infer them from the confirmed OC/H8 path.
+3. Continue investigating tetrahedral native generation as a separate gated
+   track; do not infer it from the confirmed H8 path.
 4. Continue investigating stress generation on larger copied GUI-generated
    fixtures, keeping it optional until reliable.
 5. Only then consider enabling `Z88Adapter.run()` as a broad automated entry
